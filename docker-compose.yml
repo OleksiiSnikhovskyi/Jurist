@@ -2,19 +2,18 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_DB: jurist
-      POSTGRES_USER: jurist
-      POSTGRES_PASSWORD: jurist
+      POSTGRES_DB: jur_db
+      POSTGRES_USER: jur_user
+      POSTGRES_PASSWORD: jur_password
     ports:
       - "5432:5432"
     volumes:
-      - jurist_postgres_data:/var/lib/postgresql/data
+      - jur_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jurist -d jurist"]
+      test: ["CMD-SHELL", "pg_isready -U jur_user -d jur_db"]
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
-  jurist_postgres_data:
-
+  jur_postgres_data:

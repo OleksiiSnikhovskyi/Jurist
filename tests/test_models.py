@@ -7,6 +7,7 @@ def test_expected_tables_are_registered() -> None:
         "users",
         "workspaces",
         "workspace_members",
+        "lawyer_profiles",
         "documents",
         "legal_sources",
         "document_chunks",

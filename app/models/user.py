@@ -18,4 +18,4 @@ class User(Base):
 
     owned_workspaces = relationship("Workspace", back_populates="owner")
     memberships = relationship("WorkspaceMember", back_populates="user")
-
+    lawyer_profile = relationship("LawyerProfile", back_populates="user", uselist=False)

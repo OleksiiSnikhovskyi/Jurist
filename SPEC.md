@@ -13,6 +13,7 @@ The platform is organized as:
 - FastAPI backend.
 - Legal Platform Orchestrator.
 - Workspace access control.
+- Personal lawyer profiles with system prompt, specialization, work context, represented interests, and communication preferences.
 - Legal research, contract review, case law, drafting, regulatory monitoring, and quality control agents.
 - PostgreSQL + pgvector.
 - n8n workflow automation for ingestion, monitoring, indexing, and reporting.
@@ -23,6 +24,7 @@ The platform is organized as:
 - PostgreSQL + pgvector.
 - FastAPI backend.
 - Users and workspaces.
+- Lawyer profile for each legal professional.
 - Document upload.
 - PDF/DOCX text extraction.
 - Chunking and embeddings.

@@ -59,6 +59,23 @@ def upgrade() -> None:
     )
 
     op.create_table(
+        "lawyer_profiles",
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("user_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("display_name", sa.String(length=255), nullable=True),
+        sa.Column("system_prompt", sa.Text(), nullable=False),
+        sa.Column("specialization", sa.Text(), nullable=True),
+        sa.Column("jurisdictions", postgresql.JSONB(), nullable=True),
+        sa.Column("workplace_context", sa.Text(), nullable=True),
+        sa.Column("represented_interests", sa.Text(), nullable=True),
+        sa.Column("communication_style", sa.Text(), nullable=True),
+        sa.Column("extra_context", postgresql.JSONB(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.UniqueConstraint("user_id", name="uq_lawyer_profiles_user_id"),
+    )
+
+    op.create_table(
         "documents",
         sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
         sa.Column(
@@ -149,6 +166,7 @@ def downgrade() -> None:
     op.drop_table("document_chunks")
     op.drop_table("legal_sources")
     op.drop_table("documents")
+    op.drop_table("lawyer_profiles")
     op.drop_table("workspace_members")
     op.drop_table("workspaces")
     op.drop_index("ix_users_email", table_name="users")

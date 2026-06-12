@@ -10,6 +10,7 @@
 - PostgreSQL 16 + pgvector через Docker Compose.
 - SQLAlchemy models і Alembic migration.
 - Workspace-based ізоляція приватних документів.
+- Personal lawyer profile for prompt, specialization, work context, represented interests, and communication style.
 - Healthcheck endpoint: `GET /health`.
 - Agent endpoint-заготовка: `POST /agents/orchestrator/query`.
 - Абстракції для embeddings і майбутніх LLM-провайдерів.
