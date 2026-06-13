@@ -2,11 +2,10 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
-from app.models.types import GUID, new_uuid
+from app.models.types import GUID, JSONVariant, new_uuid
 
 
 class LegalOpinion(Base):
@@ -19,7 +18,6 @@ class LegalOpinion(Base):
     question: Mapped[str] = mapped_column(Text, nullable=False)
     answer: Mapped[str] = mapped_column(Text, nullable=False)
     risk_level: Mapped[str | None] = mapped_column(String(50))
-    sources_used: Mapped[dict | None] = mapped_column(JSONB)
+    sources_used: Mapped[dict | None] = mapped_column(JSONVariant)
     confidence_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-

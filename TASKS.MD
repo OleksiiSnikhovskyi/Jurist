@@ -15,7 +15,7 @@
 - [x] Add CRUD endpoints for lawyer profiles.
 - [x] Add repository/service layer for workspaces.
 - [x] Add role checks for owner/admin/lawyer/reviewer/viewer.
-- [ ] Add audit logging service.
+- [x] Add audit logging service.
 - [ ] Add tests for cross-workspace access denial.
 
 ## Stage 3: Documents
