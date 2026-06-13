@@ -1,4 +1,5 @@
 import hashlib
+import json
 from typing import Protocol
 
 from app.config import Settings, get_settings
@@ -59,3 +60,16 @@ def get_embedding_provider(settings: Settings | None = None) -> EmbeddingProvide
     if provider_name == "none":
         return NotConfiguredEmbeddingProvider()
     raise ValueError(f"Unsupported embedding provider: {active_settings.embedding_provider}")
+
+
+def serialize_embedding(embedding: list[float]) -> str:
+    return "[" + ",".join(f"{value:.8f}" for value in embedding) + "]"
+
+
+def deserialize_embedding(value: str | None) -> list[float] | None:
+    if not value:
+        return None
+    parsed = json.loads(value)
+    if not isinstance(parsed, list):
+        raise ValueError("Embedding value must be a list")
+    return [float(item) for item in parsed]

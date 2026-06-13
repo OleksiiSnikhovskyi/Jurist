@@ -4,7 +4,9 @@ from app.config import Settings
 from app.services.embedding_service import (
     DeterministicEmbeddingProvider,
     NotConfiguredEmbeddingProvider,
+    deserialize_embedding,
     get_embedding_provider,
+    serialize_embedding,
 )
 
 
@@ -52,3 +54,10 @@ def test_not_configured_provider_raises() -> None:
 def test_unknown_provider_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unsupported embedding provider"):
         get_embedding_provider(Settings(embedding_provider="missing"))
+
+
+def test_embedding_serialization_round_trip() -> None:
+    serialized = serialize_embedding([0.25, -0.5, 1.0])
+
+    assert serialized == "[0.25000000,-0.50000000,1.00000000]"
+    assert deserialize_embedding(serialized) == [0.25, -0.5, 1.0]

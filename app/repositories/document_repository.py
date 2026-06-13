@@ -64,3 +64,11 @@ class DocumentRepository:
             .order_by(DocumentChunk.chunk_index.asc())
             .all()
         )
+
+    def list_chunks_for_workspace(self, workspace_id: str) -> list[DocumentChunk]:
+        return (
+            self.db.query(DocumentChunk)
+            .filter(DocumentChunk.workspace_id == workspace_id)
+            .order_by(DocumentChunk.created_at.asc(), DocumentChunk.chunk_index.asc())
+            .all()
+        )

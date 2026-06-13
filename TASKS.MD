@@ -31,7 +31,7 @@
 - [x] Implement chunk persistence.
 - [x] Add embedding provider configuration.
 - [x] Add Obsidian Markdown vault ingestion.
-- [ ] Implement vector search with workspace filters.
+- [x] Implement vector search with workspace filters.
 - [ ] Implement Contract Review Agent.
 - [ ] Implement Legal Research Agent.
 - [ ] Implement Quality Control Agent.

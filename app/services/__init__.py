@@ -26,6 +26,12 @@ from app.services.obsidian_ingestion_service import (
     ObsidianIngestionService,
     ObsidianNote,
 )
+from app.services.vector_search_service import (
+    VectorSearchCommand,
+    VectorSearchResult,
+    VectorSearchService,
+    cosine_similarity,
+)
 from app.services.workspace_service import (
     OWNER_ROLE,
     WorkspaceCreateCommand,
@@ -67,5 +73,9 @@ __all__ = [
     "WorkspaceRole",
     "WorkspaceUserNotFoundError",
     "UnsupportedDocumentTypeError",
+    "VectorSearchCommand",
+    "VectorSearchResult",
+    "VectorSearchService",
     "sanitize_audit_metadata",
+    "cosine_similarity",
 ]
