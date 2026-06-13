@@ -33,3 +33,5 @@ Embedding generation is configured through `EMBEDDING_PROVIDER`, `EMBEDDING_MODE
 Vector search uses `VectorSearchService` to require workspace membership, load only chunks from the requested `workspace_id`, fill missing chunk embeddings, and rank results by cosine similarity. The first implementation keeps ranking in Python for portability; PostgreSQL pgvector indexing can replace the scoring layer later without changing access-control rules.
 
 Contract review uses `ContractReviewAgent` over workspace-filtered search results. The first implementation is deterministic and source-aware: it identifies checklist risk areas from retrieved chunks and returns warnings instead of generating definitive legal conclusions.
+
+Legal research uses `LegalResearchAgent` over the same workspace-filtered search layer. It turns retrieved chunks into a preliminary research memo with issue categories, source references, and explicit warnings that official legal sources and current court practice must be verified before relying on the answer.

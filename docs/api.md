@@ -27,6 +27,10 @@ The MVP skeleton returns a safe placeholder and does not generate legal conclusi
 
 Runs a workspace-scoped contract review over indexed document chunks. The response includes warnings, source chunk references, and a conservative confidence score. It does not replace human legal review.
 
+`POST /agents/legal-research/query`
+
+Runs a workspace-scoped legal research pass over indexed chunks. The response summarizes relevant facts from the workspace, flags possible legal issues, lists source chunk references, and warns that laws and court practice must be checked in official sources before use.
+
 ## Lawyer Profiles
 
 `POST /lawyer-profiles`

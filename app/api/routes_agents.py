@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.agents.contract_review import ContractReviewAgent
+from app.agents.legal_research import LegalResearchAgent
 from app.agents.orchestrator import LegalPlatformOrchestrator
 from app.database import get_db
 from app.schemas.agent_schema import AgentQueryRequest, AgentQueryResponse
@@ -24,6 +25,19 @@ def query_contract_review(
 ) -> AgentQueryResponse:
     try:
         return ContractReviewAgent(db).review(request)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/legal-research/query", response_model=AgentQueryResponse)
+def query_legal_research(
+    request: AgentQueryRequest,
+    db: Session = Depends(get_db),
+) -> AgentQueryResponse:
+    try:
+        return LegalResearchAgent(db).research(request)
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AccessDeniedError as exc:
