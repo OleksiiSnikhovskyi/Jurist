@@ -60,3 +60,19 @@ Updates any subset of profile fields.
 `DELETE /lawyer-profiles/{profile_id}`
 
 Deletes a lawyer profile.
+
+## Documents
+
+`POST /documents/upload`
+
+Uploads a file into a workspace and stores document metadata. The caller must be a workspace member with `write_documents` permission.
+
+Multipart form fields:
+
+- `workspace_id`: target workspace ID.
+- `user_id`: uploading user ID.
+- `file`: binary file.
+- `document_type`: optional content/type override.
+- `confidentiality_level`: optional, defaults to `private`.
+
+The endpoint stores the file in `UPLOAD_DIR`, creates a `documents` record, and writes a `document.uploaded` audit log entry. Text extraction and chunking are handled in later ingestion steps.

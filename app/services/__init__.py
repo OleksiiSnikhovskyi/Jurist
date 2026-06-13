@@ -10,6 +10,7 @@ from app.services.access_control import (
 )
 from app.services.audit_log_service import AuditLogCommand, AuditLogService, sanitize_audit_metadata
 from app.services.document_access_service import DocumentAccessService, DocumentNotFoundError
+from app.services.document_upload_service import DocumentUploadCommand, DocumentUploadService
 from app.services.workspace_service import (
     OWNER_ROLE,
     WorkspaceCreateCommand,
@@ -29,6 +30,8 @@ __all__ = [
     "AuditLogService",
     "DocumentAccessService",
     "DocumentNotFoundError",
+    "DocumentUploadCommand",
+    "DocumentUploadService",
     "InvalidWorkspaceRoleError",
     "OWNER_ROLE",
     "WorkspaceCreateCommand",

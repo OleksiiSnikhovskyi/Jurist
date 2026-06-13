@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes_agents import router as agents_router
+from app.api.routes_documents import router as documents_router
 from app.api.routes_health import router as health_router
 from app.api.routes_lawyer_profiles import router as lawyer_profiles_router
 from app.config import get_settings
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(agents_router)
     app.include_router(lawyer_profiles_router)
+    app.include_router(documents_router)
     return app
 
 

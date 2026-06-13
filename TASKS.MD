@@ -20,8 +20,8 @@
 
 ## Stage 3: Documents
 
-- [ ] Implement upload endpoint.
-- [ ] Store document metadata.
+- [x] Implement upload endpoint.
+- [x] Store document metadata.
 - [ ] Extract PDF text.
 - [ ] Extract DOCX text.
 - [ ] Add parser tests.
