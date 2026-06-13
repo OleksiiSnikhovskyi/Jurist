@@ -30,6 +30,7 @@
 
 - [x] Implement chunk persistence.
 - [ ] Add embedding provider configuration.
+- [ ] Add Obsidian Markdown vault ingestion.
 - [ ] Implement vector search with workspace filters.
 - [ ] Implement Contract Review Agent.
 - [ ] Implement Legal Research Agent.
@@ -39,6 +40,7 @@
 
 - [ ] Add n8n workflow templates.
 - [ ] Add `JUR_` bot intake workflow for voice, photo, scan, Word, Excel, and PDF packages.
+- [ ] Add `JUR_` Obsidian vault sync workflow.
 - [ ] Document API endpoints.
 - [ ] Document deployment.
 - [ ] Document security model.

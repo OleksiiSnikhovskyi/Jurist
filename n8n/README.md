@@ -5,6 +5,7 @@ Planned workflow templates:
 - `JUR_Bot_Intake_Queue.json`
 - `JUR_Document_Ingestion.json`
 - `JUR_Document_Processing_Start.json`
+- `JUR_Obsidian_Vault_Sync.json`
 - `JUR_Legal_Update_Monitoring.json`
 - `JUR_Case_Law_Indexing.json`
 - `JUR_Weekly_Digest.json`
@@ -42,3 +43,24 @@ Recommended workflow split:
 - `JUR_Document_Ingestion`: extracts text from PDFs, DOCX, Excel files, scans, photos, and voice transcripts, then stores document metadata and chunks.
 
 The workflow must keep a clear package/session ID so that multiple uploads from one user can be processed together. If a user sends files without pressing `Почати обробку`, the system should acknowledge receipt and wait.
+
+## Obsidian Requirements
+
+Obsidian can be used as a lawyer's Markdown knowledge vault. A future `JUR_Obsidian_Vault_Sync` workflow should ingest selected Markdown notes and keep them searchable alongside uploaded documents.
+
+Expected Obsidian inputs:
+
+- Markdown note body.
+- YAML frontmatter.
+- Tags.
+- Internal links and backlinks where available.
+- Folder path as workspace/context metadata.
+- Attachments referenced by Markdown notes when supported.
+
+Important rules:
+
+- Sync only explicitly configured vault folders or notes.
+- Preserve `workspace_id`, `user_id`, and source path metadata.
+- Treat private vault notes as workspace-scoped private knowledge.
+- Do not process or re-index a vault automatically if the user has configured manual sync mode.
+- Store Obsidian chunks separately enough to identify their source as `obsidian`, while still allowing unified vector search later.

@@ -17,6 +17,7 @@ The platform is organized as:
 - Legal research, contract review, case law, drafting, regulatory monitoring, and quality control agents.
 - PostgreSQL + pgvector.
 - n8n workflow automation for ingestion, monitoring, indexing, and reporting.
+- Obsidian vault ingestion for Markdown notes, legal templates, personal knowledge bases, case notes, tags, and backlinks.
 
 ## MVP
 
@@ -29,6 +30,7 @@ The platform is organized as:
 - PDF/DOCX/XLSX text extraction.
 - Bot intake for voice messages, document photos, scanned copies, Word files, Excel files, and PDFs, with processing started only after an explicit user command.
 - Chunking and embeddings.
+- Obsidian Markdown vault indexing.
 - Vector search.
 - Basic orchestrator.
 - Contract Review Agent.
