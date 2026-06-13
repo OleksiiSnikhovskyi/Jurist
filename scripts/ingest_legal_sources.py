@@ -4,10 +4,15 @@ import argparse
 import csv
 import json
 import os
+import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker

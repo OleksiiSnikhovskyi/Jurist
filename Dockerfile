@@ -9,10 +9,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md alembic.ini ./
+COPY pyproject.toml README.md SPEC.md alembic.ini ./
 COPY app ./app
+COPY docs ./docs
 COPY migrations ./migrations
 COPY scripts ./scripts
+COPY System_Prompts ./System_Prompts
+COPY TOR ./TOR
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir .
