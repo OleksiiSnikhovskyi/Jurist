@@ -89,10 +89,10 @@ These endpoints are intentionally separate from the public document and agent en
 
 ## Current Server Import
 
-Imported into `https://n8n.csc-ua.tech` on 2026-06-13, inactive by default:
+Imported into `https://n8n.csc-ua.tech` on 2026-06-13:
 
-- `JUR_Bot_Intake_Queue`: `nWAfwIrKQt1kBgnJ`
-- `JUR_Document_Processing_Start`: `tvcUdTGWwatqdS4e`
-- `JUR_Obsidian_Vault_Sync`: `NGubhhjGjGp8lh57`
+- `JUR_Bot_Intake_Queue`: `nWAfwIrKQt1kBgnJ` (`https://n8n.csc-ua.tech/workflow/nWAfwIrKQt1kBgnJ`)
+- `JUR_Document_Processing_Start`: `tvcUdTGWwatqdS4e` (`https://n8n.csc-ua.tech/workflow/tvcUdTGWwatqdS4e`)
+- `JUR_Obsidian_Vault_Sync`: `NGubhhjGjGp8lh57` (`https://n8n.csc-ua.tech/workflow/NGubhhjGjGp8lh57`)
 
-`JUR_Bot_Intake_Queue` uses the n8n Telegram credential `PravnykAi`. Activate the workflows only after `JUR_API_BASE_URL` points to a reachable FastAPI deployment.
+`JUR_Bot_Intake_Queue` uses the n8n Telegram credential `PravnykAi`. The workflows are active, but production processing still requires `JUR_API_BASE_URL` to point to a reachable FastAPI deployment.

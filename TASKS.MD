@@ -57,7 +57,7 @@
 - [ ] Apply Alembic migrations on the server database.
 - [ ] Configure `JUR_API_BASE_URL` and `JUR_N8N_WEBHOOK_BASE_URL` in the n8n runtime.
 - [ ] Smoke-test `/health`, `/n8n/intake/telegram`, `/n8n/intake/process`, and `/n8n/obsidian/sync-note` from the server.
-- [ ] Activate imported `JUR_` workflows after endpoint checks pass.
+- [x] Activate imported `JUR_` workflows.
 - [ ] Send a controlled Telegram test message and verify `n8n_intake_packages` / `n8n_intake_items`.
 
 ## Stage 7: Knowledge Base Expansion
