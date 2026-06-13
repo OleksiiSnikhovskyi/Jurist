@@ -34,7 +34,7 @@
 - [x] Implement vector search with workspace filters.
 - [x] Implement Contract Review Agent.
 - [x] Implement Legal Research Agent.
-- [ ] Implement Quality Control Agent.
+- [x] Implement Quality Control Agent.
 
 ## Stage 5: n8n and Docs
 

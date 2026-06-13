@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.agents.contract_review import ContractReviewAgent
 from app.agents.legal_research import LegalResearchAgent
 from app.agents.orchestrator import LegalPlatformOrchestrator
+from app.agents.quality_control import QualityControlAgent
 from app.database import get_db
 from app.schemas.agent_schema import AgentQueryRequest, AgentQueryResponse
 from app.services.access_control import AccessDeniedError
@@ -38,6 +39,19 @@ def query_legal_research(
 ) -> AgentQueryResponse:
     try:
         return LegalResearchAgent(db).research(request)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/quality-control/query", response_model=AgentQueryResponse)
+def query_quality_control(
+    request: AgentQueryRequest,
+    db: Session = Depends(get_db),
+) -> AgentQueryResponse:
+    try:
+        return QualityControlAgent(db).review(request)
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AccessDeniedError as exc:

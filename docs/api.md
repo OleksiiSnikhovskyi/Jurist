@@ -31,6 +31,10 @@ Runs a workspace-scoped contract review over indexed document chunks. The respon
 
 Runs a workspace-scoped legal research pass over indexed chunks. The response summarizes relevant facts from the workspace, flags possible legal issues, lists source chunk references, and warns that laws and court practice must be checked in official sources before use.
 
+`POST /agents/quality-control/query`
+
+Runs a workspace-scoped quality control pass over a draft answer or legal opinion text supplied in `question`. The response flags missing sources, overconfident wording, weak factual grounding, missing risk blocks, and returns source chunk references for manual review.
+
 ## Lawyer Profiles
 
 `POST /lawyer-profiles`

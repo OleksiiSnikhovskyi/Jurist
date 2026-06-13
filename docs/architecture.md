@@ -35,3 +35,5 @@ Vector search uses `VectorSearchService` to require workspace membership, load o
 Contract review uses `ContractReviewAgent` over workspace-filtered search results. The first implementation is deterministic and source-aware: it identifies checklist risk areas from retrieved chunks and returns warnings instead of generating definitive legal conclusions.
 
 Legal research uses `LegalResearchAgent` over the same workspace-filtered search layer. It turns retrieved chunks into a preliminary research memo with issue categories, source references, and explicit warnings that official legal sources and current court practice must be verified before relying on the answer.
+
+Quality control uses `QualityControlAgent` as the final deterministic gate for draft answers and legal opinions. It checks whether the draft includes source grounding, factual basis, risk language, and appropriate legal caveats, while still requiring final approval by a human lawyer.
