@@ -123,3 +123,28 @@ n8n calls these FastAPI endpoints:
 - `POST /n8n/obsidian/sync-note`
 
 The public API documentation in `docs/api.md` describes the payload purpose and expected behavior.
+
+## Server Docker Deployment
+
+The server compose file is `docker-compose.server.yml`. It runs:
+
+- `agent-jurist-postgres`: PostgreSQL + pgvector.
+- `agent-jurist-api`: FastAPI backend on internal Docker DNS name `agent-jurist-api`.
+
+Deploy on the n8n server with:
+
+```bash
+git clone https://github.com/OleksiiSnikhovskyi/Jurist.git Agent_Jurist
+cd Agent_Jurist
+docker compose -f docker-compose.server.yml up -d --build
+curl http://127.0.0.1:8020/health
+```
+
+The API joins the existing `n8n-docker_default` network, so n8n should use:
+
+```text
+JUR_API_BASE_URL=http://agent-jurist-api:8000
+JUR_N8N_WEBHOOK_BASE_URL=https://n8n.csc-ua.tech/webhook
+```
+
+After changing n8n environment variables, recreate the n8n container and then re-check the three active `JUR_` workflows.

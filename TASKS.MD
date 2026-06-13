@@ -3,7 +3,7 @@
 ## Status
 
 - [x] MVP backend, database, document ingestion, vector search, agents, n8n templates, and documentation are complete.
-- [x] Initial `JUR_` workflows were imported to `https://n8n.csc-ua.tech` and left inactive.
+- [x] Initial `JUR_` workflows were imported to `https://n8n.csc-ua.tech` and activated.
 - [x] Local development knowledge base was seeded from project Markdown files.
 
 ## Stage 1: Project Skeleton

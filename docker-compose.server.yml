@@ -1,0 +1,53 @@
+services:
+  jur-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agent-jurist-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-jur_db}
+      POSTGRES_USER: ${POSTGRES_USER:-jur_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jur_password}
+    volumes:
+      - jur_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jur_user} -d ${POSTGRES_DB:-jur_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - jur_internal
+
+  agent-jurist-api:
+    build:
+      context: .
+    container_name: agent-jurist-api
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jur_user}:${POSTGRES_PASSWORD:-jur_password}@jur-postgres:5432/${POSTGRES_DB:-jur_db}
+      UPLOAD_DIR: /app/uploads
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-deterministic}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-local-hash-v1}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      CORS_ORIGINS: ${CORS_ORIGINS:-[]}
+    ports:
+      - "127.0.0.1:8020:8000"
+    volumes:
+      - jur_uploads:/app/uploads
+    depends_on:
+      jur-postgres:
+        condition: service_healthy
+    networks:
+      jur_internal:
+      n8n-docker_default:
+        aliases:
+          - agent-jurist-api
+
+volumes:
+  jur_postgres_data:
+  jur_uploads:
+
+networks:
+  jur_internal:
+  n8n-docker_default:
+    external: true
