@@ -86,3 +86,13 @@ The first workflow templates target these backend integration endpoints:
 - `POST /n8n/obsidian/sync-note`: ingests one normalized Obsidian note into workspace-scoped search.
 
 These endpoints are intentionally separate from the public document and agent endpoints so that bot package state, OCR/transcription, and retry metadata can evolve without changing user-facing APIs.
+
+## Current Server Import
+
+Imported into `https://n8n.csc-ua.tech` on 2026-06-13, inactive by default:
+
+- `JUR_Bot_Intake_Queue`: `nWAfwIrKQt1kBgnJ`
+- `JUR_Document_Processing_Start`: `tvcUdTGWwatqdS4e`
+- `JUR_Obsidian_Vault_Sync`: `NGubhhjGjGp8lh57`
+
+`JUR_Bot_Intake_Queue` uses the n8n Telegram credential `PravnykAi`. Activate the workflows only after `JUR_API_BASE_URL` points to a reachable FastAPI deployment.

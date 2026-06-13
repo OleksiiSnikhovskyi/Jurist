@@ -1,6 +1,8 @@
+from sqlalchemy import insert
 from sqlalchemy.orm import Session
 
 from app.models.document import Document, DocumentChunk
+from app.models.types import new_uuid
 
 
 class DocumentRepository:
@@ -44,18 +46,21 @@ class DocumentRepository:
         workspace_id: str,
         chunks: list[str],
     ) -> list[DocumentChunk]:
-        document_chunks = [
-            DocumentChunk(
-                document_id=document_id,
-                workspace_id=workspace_id,
-                chunk_index=index,
-                chunk_text=chunk_text,
-            )
+        payload = [
+            {
+                "id": new_uuid(),
+                "document_id": document_id,
+                "workspace_id": workspace_id,
+                "chunk_index": index,
+                "chunk_text": chunk_text,
+            }
             for index, chunk_text in enumerate(chunks)
         ]
-        self.db.add_all(document_chunks)
+        if not payload:
+            return []
+        self.db.execute(insert(DocumentChunk), payload)
         self.db.flush()
-        return document_chunks
+        return self.list_chunks_for_document(document_id)
 
     def list_chunks_for_document(self, document_id: str) -> list[DocumentChunk]:
         return (

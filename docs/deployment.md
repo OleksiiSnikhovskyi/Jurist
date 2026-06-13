@@ -39,6 +39,24 @@ py -3 -m alembic current
 
 Expected current migration after n8n integration is `20260613_0002`.
 
+## Knowledge Base Seeding
+
+Markdown and Obsidian-style notes can be ingested into the development knowledge base with:
+
+```bash
+py -3 scripts/ingest_markdown_knowledge_base.py SPEC.md docs System_Prompts TOR
+```
+
+The script creates or reuses a development lawyer user and workspace from these variables:
+
+- `JUR_KB_USER_ID`
+- `JUR_KB_USER_EMAIL`
+- `JUR_KB_USER_NAME`
+- `JUR_KB_WORKSPACE_ID`
+- `JUR_KB_WORKSPACE_NAME`
+
+The default workspace is `JUR Knowledge Base`. Re-running the script is safe: documents are matched by `workspace_id` and `file_path`, then their chunks are rebuilt.
+
 ## Codespaces
 
 For GitHub Codespaces:

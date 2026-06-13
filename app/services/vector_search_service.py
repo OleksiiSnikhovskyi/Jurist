@@ -1,6 +1,7 @@
 import math
 from dataclasses import dataclass
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.document import DocumentChunk
@@ -73,8 +74,7 @@ class VectorSearchService:
         chunk_embedding = deserialize_embedding(chunk.embedding)
         if chunk_embedding is None:
             chunk_embedding = self.embedding_provider.embed(chunk.chunk_text)
-            chunk.embedding = serialize_embedding(chunk_embedding)
-            self.db.add(chunk)
+            self._persist_chunk_embedding(chunk, serialize_embedding(chunk_embedding))
 
         return VectorSearchResult(
             chunk_id=chunk.id,
@@ -84,6 +84,18 @@ class VectorSearchService:
             chunk_text=chunk.chunk_text,
             score=cosine_similarity(query_embedding, chunk_embedding),
         )
+
+    def _persist_chunk_embedding(self, chunk: DocumentChunk, embedding: str) -> None:
+        bind = self.db.get_bind()
+        if bind.dialect.name == "postgresql":
+            self.db.execute(
+                text("UPDATE document_chunks SET embedding = CAST(:embedding AS vector) WHERE id = :chunk_id"),
+                {"embedding": embedding, "chunk_id": chunk.id},
+            )
+            return
+
+        chunk.embedding = embedding
+        self.db.add(chunk)
 
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:
