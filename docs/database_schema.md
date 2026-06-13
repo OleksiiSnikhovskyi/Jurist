@@ -11,6 +11,8 @@ Initial tables:
 - `document_chunks`
 - `legal_opinions`
 - `audit_logs`
+- `n8n_intake_packages`
+- `n8n_intake_items`
 
 Run migrations with:
 

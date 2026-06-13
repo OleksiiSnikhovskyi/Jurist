@@ -88,3 +88,17 @@ Multipart form fields:
 - `confidentiality_level`: optional, defaults to `private`.
 
 The endpoint stores the file in `UPLOAD_DIR`, creates a `documents` record, extracts text from supported PDF/DOCX files into `documents.extracted_text`, and writes a `document.uploaded` audit log entry. Chunking is handled in later ingestion steps.
+
+## n8n Integration
+
+`POST /n8n/intake/telegram`
+
+Receives normalized Telegram events from `JUR_Bot_Intake_Queue`. If `workspace_id` and `user_id` are provided, the endpoint creates or updates the active pending intake package for the Telegram chat and stores text/file metadata. If the Telegram user is not yet linked to a workspace user, the endpoint returns `ok=false` with a bot-safe reply message.
+
+`POST /n8n/intake/process`
+
+Starts explicit package processing after the user presses `Почати обробку`. The endpoint marks the package as `processing_requested` and records the requested agent/question for the next processing step.
+
+`POST /n8n/obsidian/sync-note`
+
+Receives a normalized Obsidian Markdown note from `JUR_Obsidian_Vault_Sync`, stores it as an `obsidian_markdown` document, chunks it, and makes it available to workspace-scoped vector search.
