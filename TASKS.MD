@@ -1,5 +1,11 @@
 # Tasks
 
+## Status
+
+- [x] MVP backend, database, document ingestion, vector search, agents, n8n templates, and documentation are complete.
+- [x] Initial `JUR_` workflows were imported to `https://n8n.csc-ua.tech` and left inactive.
+- [x] Local development knowledge base was seeded from project Markdown files.
+
 ## Stage 1: Project Skeleton
 
 - [x] Create FastAPI project structure.
@@ -44,3 +50,46 @@
 - [x] Document API endpoints.
 - [x] Document deployment.
 - [x] Document security model.
+
+## Stage 6: Server Deployment and Activation
+
+- [ ] Deploy or expose FastAPI backend so n8n can reach `JUR_API_BASE_URL`.
+- [ ] Apply Alembic migrations on the server database.
+- [ ] Configure `JUR_API_BASE_URL` and `JUR_N8N_WEBHOOK_BASE_URL` in the n8n runtime.
+- [ ] Smoke-test `/health`, `/n8n/intake/telegram`, `/n8n/intake/process`, and `/n8n/obsidian/sync-note` from the server.
+- [ ] Activate imported `JUR_` workflows after endpoint checks pass.
+- [ ] Send a controlled Telegram test message and verify `n8n_intake_packages` / `n8n_intake_items`.
+
+## Stage 7: Knowledge Base Expansion
+
+- [ ] Choose production legal source folders, Obsidian vaults, or document sets for ingestion.
+- [ ] Ingest selected Markdown/Obsidian materials into the production workspace.
+- [ ] Add PDF/DOCX/XLSX bulk ingestion flow for legal source packs.
+- [ ] Add OCR pipeline for photos and scanned documents.
+- [ ] Add voice transcription pipeline for Telegram voice messages.
+- [ ] Add source freshness metadata for laws, court practice, and regulatory materials.
+
+## Stage 8: Telegram User Onboarding
+
+- [ ] Design Telegram-to-user/workspace binding flow.
+- [ ] Add backend model or mapping for Telegram users and workspace access.
+- [ ] Add bot commands for choosing workspace/case.
+- [ ] Add package review UX before `Почати обробку`.
+- [ ] Add delete-one-material and cancel-processing behavior end to end.
+
+## Stage 9: Legal Answer Production
+
+- [ ] Connect package processing to document extraction, chunking, vector search, and agents.
+- [ ] Store generated answers in `legal_opinions`.
+- [ ] Add lawyer review/approval state for generated opinions.
+- [ ] Add official-source verification workflow for legislation and court practice.
+- [ ] Add export of final answers to DOCX/PDF.
+
+## Stage 10: Production Hardening
+
+- [ ] Add API authentication for `/n8n/...` integration endpoints.
+- [ ] Add rate limits and payload-size limits for bot uploads.
+- [ ] Add structured logging and execution tracing.
+- [ ] Add backup/restore instructions for `jur_db`.
+- [ ] Add CI workflow for tests and migration checks.
+- [ ] Replace deterministic embeddings with a production embedding provider.
