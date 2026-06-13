@@ -8,9 +8,10 @@ Create Date: 2026-06-12
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.types import UserDefinedType
 
 
-class Vector(sa.UserDefinedType):
+class Vector(UserDefinedType):
     def get_col_spec(self, **kw: object) -> str:
         return "vector(1536)"
 
