@@ -88,6 +88,33 @@ def test_document_upload_service_stores_file_metadata_and_audit(
     assert audit_log.action == "document.uploaded"
     assert audit_log.object_id == document.id
     assert audit_log.metadata_json["document_name"] == "contract.txt"
+    assert audit_log.metadata_json["extraction_status"] == "not_extracted"
+
+
+def test_document_upload_service_extracts_docx_text(
+    db_session: Session,
+    upload_dir: Path,
+) -> None:
+    from docx import Document as DocxDocument
+
+    _seed_workspace(db_session)
+    docx_path = upload_dir / "source-contract.docx"
+    docx = DocxDocument()
+    docx.add_paragraph("Important DOCX clause")
+    docx.save(docx_path)
+
+    with docx_path.open("rb") as input_file:
+        upload = UploadFile(filename="contract.docx", file=input_file)
+        document = DocumentUploadService(db_session, upload_dir).upload(
+            DocumentUploadCommand(
+                workspace_id="workspace-1",
+                user_id="user-1",
+                document_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ),
+            upload,
+        )
+
+    assert document.extracted_text == "Important DOCX clause"
 
 
 def test_document_upload_service_denies_viewer_write(

@@ -19,6 +19,7 @@ class DocumentRepository:
         document_type: str | None,
         file_path: str,
         confidentiality_level: str,
+        extracted_text: str | None = None,
     ) -> Document:
         document = Document(
             workspace_id=workspace_id,
@@ -27,6 +28,7 @@ class DocumentRepository:
             document_type=document_type,
             file_path=file_path,
             confidentiality_level=confidentiality_level,
+            extracted_text=extracted_text,
         )
         self.db.add(document)
         self.db.flush()

@@ -22,9 +22,9 @@
 
 - [x] Implement upload endpoint.
 - [x] Store document metadata.
-- [ ] Extract PDF text.
-- [ ] Extract DOCX text.
-- [ ] Add parser tests.
+- [x] Extract PDF text.
+- [x] Extract DOCX text.
+- [x] Add parser tests.
 
 ## Stage 4: Search and Agents
 

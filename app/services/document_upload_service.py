@@ -10,6 +10,7 @@ from app.models.types import new_uuid
 from app.repositories.document_repository import DocumentRepository
 from app.services.access_control import AccessControlService, WorkspacePermission
 from app.services.audit_log_service import AuditLogCommand, AuditLogService
+from app.services.document_text_extractor import DocumentTextExtractor
 
 
 @dataclass(frozen=True)
@@ -28,12 +29,14 @@ class DocumentUploadService:
         document_repository: DocumentRepository | None = None,
         access_control: AccessControlService | None = None,
         audit_log_service: AuditLogService | None = None,
+        text_extractor: DocumentTextExtractor | None = None,
     ) -> None:
         self.db = db
         self.upload_dir = Path(upload_dir)
         self.document_repository = document_repository or DocumentRepository(db)
         self.access_control = access_control or AccessControlService(db)
         self.audit_log_service = audit_log_service or AuditLogService(db)
+        self.text_extractor = text_extractor or DocumentTextExtractor()
 
     def upload(self, command: DocumentUploadCommand, file: UploadFile) -> Document:
         self.access_control.require_permission(
@@ -43,13 +46,16 @@ class DocumentUploadService:
         )
 
         stored_path = self._store_file(file)
+        document_type = command.document_type or file.content_type
+        extracted_text = self.text_extractor.extract_text(stored_path, document_type)
         document = self.document_repository.create_document(
             workspace_id=command.workspace_id,
             uploaded_by=command.user_id,
             document_name=file.filename or stored_path.name,
-            document_type=command.document_type or file.content_type,
+            document_type=document_type,
             file_path=str(stored_path),
             confidentiality_level=command.confidentiality_level,
+            extracted_text=extracted_text,
         )
         self.audit_log_service.record(
             AuditLogCommand(
@@ -62,6 +68,7 @@ class DocumentUploadService:
                     "document_name": document.document_name,
                     "document_type": document.document_type,
                     "confidentiality_level": document.confidentiality_level,
+                    "extraction_status": "extracted" if extracted_text else "not_extracted",
                 },
             ),
             commit=False,

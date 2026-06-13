@@ -75,4 +75,4 @@ Multipart form fields:
 - `document_type`: optional content/type override.
 - `confidentiality_level`: optional, defaults to `private`.
 
-The endpoint stores the file in `UPLOAD_DIR`, creates a `documents` record, and writes a `document.uploaded` audit log entry. Text extraction and chunking are handled in later ingestion steps.
+The endpoint stores the file in `UPLOAD_DIR`, creates a `documents` record, extracts text from supported PDF/DOCX files into `documents.extracted_text`, and writes a `document.uploaded` audit log entry. Chunking is handled in later ingestion steps.
