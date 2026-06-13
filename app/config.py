@@ -7,7 +7,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "Ukrainian Legal AI Assistant"
     app_env: str = "local"
+    postgres_host: str = "localhost"
+    postgres_port: int = 5433
+    postgres_db: str = "jur_db"
+    postgres_user: str = "jur_user"
+    postgres_password: str = "jur_password"
     database_url: str = "postgresql+psycopg://jur_user:jur_password@localhost:5433/jur_db"
+    test_database_url: str = "sqlite+pysqlite:///:memory:"
     cors_origins: list[str] = Field(default_factory=list)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

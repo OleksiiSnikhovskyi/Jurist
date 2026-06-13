@@ -12,7 +12,7 @@
 ## Stage 2: Database and Access Control
 
 - [x] Create models for users, lawyer profiles, workspaces, workspace members, documents, legal sources, chunks, legal opinions, audit logs.
-- [ ] Add CRUD endpoints for lawyer profiles.
+- [x] Add CRUD endpoints for lawyer profiles.
 - [ ] Add repository/service layer for workspaces.
 - [ ] Add role checks for owner/admin/lawyer/reviewer/viewer.
 - [ ] Add audit logging service.
