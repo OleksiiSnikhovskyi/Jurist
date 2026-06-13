@@ -25,3 +25,7 @@ All private document access, vector search, legal opinions, and future n8n workf
 ## Audit Logging
 
 Access-sensitive actions are written to `audit_logs` through `AuditLogService`. Audit metadata is intentionally limited: keys such as `document_text`, `full_text`, `prompt`, `system_prompt`, and `raw_text` are removed, and long strings are truncated. Store identifiers, source names, risk flags, and operational context in audit metadata, not confidential document bodies.
+
+## Cross-Workspace Denial
+
+Document access must validate both the user's membership and the document's own `workspace_id`. A valid `document_id` is not sufficient: if the caller provides `workspace_id=A` and the document belongs to `workspace_id=B`, access is denied before any document body or chunk text is returned.
