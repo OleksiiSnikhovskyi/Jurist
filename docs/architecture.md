@@ -31,3 +31,5 @@ Obsidian vault ingestion parses Markdown notes into note/chunk objects for index
 Embedding generation is configured through `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, and `EMBEDDING_DIMENSIONS`. The default `deterministic` provider is for local development and tests only; production semantic search should use a real embedding model with the same vector dimension as the database schema.
 
 Vector search uses `VectorSearchService` to require workspace membership, load only chunks from the requested `workspace_id`, fill missing chunk embeddings, and rank results by cosine similarity. The first implementation keeps ranking in Python for portability; PostgreSQL pgvector indexing can replace the scoring layer later without changing access-control rules.
+
+Contract review uses `ContractReviewAgent` over workspace-filtered search results. The first implementation is deterministic and source-aware: it identifies checklist risk areas from retrieved chunks and returns warnings instead of generating definitive legal conclusions.

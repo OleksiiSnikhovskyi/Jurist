@@ -1,7 +1,12 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
+from app.agents.contract_review import ContractReviewAgent
 from app.agents.orchestrator import LegalPlatformOrchestrator
+from app.database import get_db
 from app.schemas.agent_schema import AgentQueryRequest, AgentQueryResponse
+from app.services.access_control import AccessDeniedError
+from app.services.document_access_service import DocumentNotFoundError
 
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -11,3 +16,15 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 def query_orchestrator(request: AgentQueryRequest) -> AgentQueryResponse:
     return LegalPlatformOrchestrator().answer(request)
 
+
+@router.post("/contract-review/query", response_model=AgentQueryResponse)
+def query_contract_review(
+    request: AgentQueryRequest,
+    db: Session = Depends(get_db),
+) -> AgentQueryResponse:
+    try:
+        return ContractReviewAgent(db).review(request)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc

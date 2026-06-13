@@ -23,6 +23,10 @@ Initial request shape:
 
 The MVP skeleton returns a safe placeholder and does not generate legal conclusions without checked sources.
 
+`POST /agents/contract-review/query`
+
+Runs a workspace-scoped contract review over indexed document chunks. The response includes warnings, source chunk references, and a conservative confidence score. It does not replace human legal review.
+
 ## Lawyer Profiles
 
 `POST /lawyer-profiles`
