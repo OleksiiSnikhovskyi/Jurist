@@ -42,5 +42,5 @@
 - [x] Add `JUR_` bot intake workflow for voice, photo, scan, Word, Excel, and PDF packages.
 - [x] Add `JUR_` Obsidian vault sync workflow.
 - [x] Document API endpoints.
-- [ ] Document deployment.
-- [ ] Document security model.
+- [x] Document deployment.
+- [x] Document security model.

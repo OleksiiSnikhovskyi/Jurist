@@ -29,3 +29,27 @@ Access-sensitive actions are written to `audit_logs` through `AuditLogService`. 
 ## Cross-Workspace Denial
 
 Document access must validate both the user's membership and the document's own `workspace_id`. A valid `document_id` is not sufficient: if the caller provides `workspace_id=A` and the document belongs to `workspace_id=B`, access is denied before any document body or chunk text is returned.
+
+## n8n Integration Security
+
+n8n integration endpoints are implementation endpoints for trusted workflows, not public client APIs. They still enforce workspace access when `workspace_id` and `user_id` are provided:
+
+- `POST /n8n/intake/telegram` requires `write_documents` before storing Telegram materials in a workspace package.
+- `POST /n8n/intake/process` requires `run_agents` before marking a package ready for processing.
+- `POST /n8n/obsidian/sync-note` requires `write_documents` before creating searchable Obsidian documents and chunks.
+
+If a Telegram event has no `workspace_id` or `user_id`, the backend returns a safe response asking for account/workspace binding and does not store private materials. This keeps future client onboarding separate from the technical PostgreSQL role and from Telegram credentials.
+
+Workflow names must start with `JUR_` so they are identifiable in n8n and easier to audit. Checked-in workflow templates are inactive by default and contain placeholder credential IDs. Real Telegram credentials must live in n8n credentials, not in repository JSON or `.env.example`.
+
+## Telegram and Uploaded Materials
+
+Telegram file IDs, filenames, MIME types, message IDs, and chat/user IDs are stored as operational metadata in `n8n_intake_items`. Raw binary files, OCR output, and voice transcripts should be stored only through controlled ingestion steps and should remain workspace-scoped. The system must not start OCR, transcription, indexing, or legal analysis until the user explicitly chooses `Почати обробку`.
+
+## Obsidian Vault Security
+
+Obsidian notes are treated as private workspace knowledge. Sync only explicitly configured notes or folders, preserve source paths as metadata, and never index an entire vault automatically unless the lawyer has configured that behavior. Synced notes become `obsidian_markdown` documents and are subject to the same workspace-scoped vector search rules as uploaded documents.
+
+## Agent Output Safety
+
+Specialized agents return source references and warnings. Contract review, legal research, and quality control responses are preliminary and must remain framed as lawyer-review workflows. When source freshness is unknown, responses must warn that current legislation and court practice require verification in official sources.
