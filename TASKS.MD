@@ -13,7 +13,7 @@
 
 - [x] Create models for users, lawyer profiles, workspaces, workspace members, documents, legal sources, chunks, legal opinions, audit logs.
 - [x] Add CRUD endpoints for lawyer profiles.
-- [ ] Add repository/service layer for workspaces.
+- [x] Add repository/service layer for workspaces.
 - [ ] Add role checks for owner/admin/lawyer/reviewer/viewer.
 - [ ] Add audit logging service.
 - [ ] Add tests for cross-workspace access denial.
