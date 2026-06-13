@@ -63,6 +63,7 @@
 ## Stage 7: Knowledge Base Expansion
 
 - [ ] Choose production legal source folders, Obsidian vaults, or document sets for ingestion.
+- [x] Add legal-source ingestion script for exported NotebookLM/local law corpus files.
 - [ ] Ingest selected Markdown/Obsidian materials into the production workspace.
 - [ ] Add PDF/DOCX/XLSX bulk ingestion flow for legal source packs.
 - [ ] Add OCR pipeline for photos and scanned documents.

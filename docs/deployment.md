@@ -57,6 +57,26 @@ The script creates or reuses a development lawyer user and workspace from these 
 
 The default workspace is `JUR Knowledge Base`. Re-running the script is safe: documents are matched by `workspace_id` and `file_path`, then their chunks are rebuilt.
 
+Legal source exports from NotebookLM or a local law folder can be ingested with:
+
+```bash
+py -3 scripts/ingest_legal_sources.py legal_sources/ua_laws --manifest legal_sources/sources.csv
+```
+
+The manifest is optional. Supported manifest formats are CSV and JSON. Common fields:
+
+- `file_path`, `path`, or `filename`
+- `source_name`, `title`, or `name`
+- `source_url` or `url`
+- `document_number` or `number`
+- `adoption_date`
+- `effective_date`
+- `validity_status` or `status`
+- `topic_tags` or `tags`
+- `summary`
+
+Supported source files are `.pdf`, `.docx`, `.txt`, and `.md`. The script writes both `legal_sources` metadata and workspace-scoped `documents`/`document_chunks`.
+
 ## Codespaces
 
 For GitHub Codespaces:
