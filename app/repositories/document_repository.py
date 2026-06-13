@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.models.document import Document
+from app.models.document import Document, DocumentChunk
 
 
 class DocumentRepository:
@@ -33,3 +33,34 @@ class DocumentRepository:
         self.db.add(document)
         self.db.flush()
         return document
+
+    def delete_chunks_for_document(self, document_id: str) -> None:
+        self.db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).delete()
+
+    def create_document_chunks(
+        self,
+        *,
+        document_id: str,
+        workspace_id: str,
+        chunks: list[str],
+    ) -> list[DocumentChunk]:
+        document_chunks = [
+            DocumentChunk(
+                document_id=document_id,
+                workspace_id=workspace_id,
+                chunk_index=index,
+                chunk_text=chunk_text,
+            )
+            for index, chunk_text in enumerate(chunks)
+        ]
+        self.db.add_all(document_chunks)
+        self.db.flush()
+        return document_chunks
+
+    def list_chunks_for_document(self, document_id: str) -> list[DocumentChunk]:
+        return (
+            self.db.query(DocumentChunk)
+            .filter(DocumentChunk.document_id == document_id)
+            .order_by(DocumentChunk.chunk_index.asc())
+            .all()
+        )

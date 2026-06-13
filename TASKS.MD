@@ -28,7 +28,7 @@
 
 ## Stage 4: Search and Agents
 
-- [ ] Implement chunk persistence.
+- [x] Implement chunk persistence.
 - [ ] Add embedding provider configuration.
 - [ ] Implement vector search with workspace filters.
 - [ ] Implement Contract Review Agent.

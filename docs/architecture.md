@@ -23,3 +23,5 @@ The central design rule is workspace isolation. Every document chunk, opinion, s
 - `app/models`: SQLAlchemy ORM models and database table definitions.
 
 Workspace operations use `WorkspaceService` over `WorkspaceRepository`. Creating a workspace also creates an owner membership, so future role checks can rely on `workspace_members` as the single membership source.
+
+Document ingestion uses `DocumentUploadService` for file storage and metadata, `DocumentTextExtractor` for supported PDF/DOCX text extraction, and `DocumentChunkingService` to persist workspace-scoped chunks for later embeddings and vector search.
