@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.repositories.workspace_repository import WorkspaceRepository
+from app.services.access_control import VALID_WORKSPACE_ROLES
 
 
 OWNER_ROLE = "owner"
@@ -24,6 +25,10 @@ class WorkspaceUserNotFoundError(WorkspaceServiceError):
 
 
 class WorkspaceMemberAlreadyExistsError(WorkspaceServiceError):
+    pass
+
+
+class WorkspaceInvalidRoleError(WorkspaceServiceError):
     pass
 
 
@@ -64,6 +69,7 @@ class WorkspaceService:
 
     def add_member(self, command: WorkspaceMemberCommand) -> WorkspaceMember:
         self._ensure_user_exists(command.user_id)
+        self._ensure_valid_role(command.role)
         if self.repository.get_workspace(command.workspace_id) is None:
             raise WorkspaceNotFoundError("Workspace not found")
         if self.repository.get_member(command.workspace_id, command.user_id) is not None:
@@ -91,3 +97,7 @@ class WorkspaceService:
     def _ensure_user_exists(self, user_id: str) -> None:
         if self.db.get(User, user_id) is None:
             raise WorkspaceUserNotFoundError("User not found")
+
+    def _ensure_valid_role(self, role: str) -> None:
+        if role not in VALID_WORKSPACE_ROLES:
+            raise WorkspaceInvalidRoleError(f"Unsupported workspace role: {role}")

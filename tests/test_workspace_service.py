@@ -7,6 +7,7 @@ from app.models.workspace import Workspace, WorkspaceMember
 from app.services.workspace_service import (
     OWNER_ROLE,
     WorkspaceCreateCommand,
+    WorkspaceInvalidRoleError,
     WorkspaceMemberAlreadyExistsError,
     WorkspaceMemberCommand,
     WorkspaceService,
@@ -70,6 +71,18 @@ def test_add_member_rejects_duplicate_membership(db_session: Session) -> None:
     with pytest.raises(WorkspaceMemberAlreadyExistsError):
         service.add_member(
             WorkspaceMemberCommand(workspace_id=workspace.id, user_id="member-1", role="reviewer")
+        )
+
+
+def test_add_member_rejects_unknown_role(db_session: Session) -> None:
+    _add_user(db_session, "owner-1", "owner@example.com")
+    _add_user(db_session, "member-1", "member@example.com")
+    service = WorkspaceService(db_session)
+    workspace = service.create_workspace(WorkspaceCreateCommand(name="Civil Cases", owner_id="owner-1"))
+
+    with pytest.raises(WorkspaceInvalidRoleError):
+        service.add_member(
+            WorkspaceMemberCommand(workspace_id=workspace.id, user_id="member-1", role="guest")
         )
 
 
