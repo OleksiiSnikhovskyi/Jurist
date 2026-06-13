@@ -38,9 +38,9 @@
 
 ## Stage 5: n8n and Docs
 
-- [ ] Add n8n workflow templates.
-- [ ] Add `JUR_` bot intake workflow for voice, photo, scan, Word, Excel, and PDF packages.
-- [ ] Add `JUR_` Obsidian vault sync workflow.
+- [x] Add n8n workflow templates.
+- [x] Add `JUR_` bot intake workflow for voice, photo, scan, Word, Excel, and PDF packages.
+- [x] Add `JUR_` Obsidian vault sync workflow.
 - [ ] Document API endpoints.
 - [ ] Document deployment.
 - [ ] Document security model.

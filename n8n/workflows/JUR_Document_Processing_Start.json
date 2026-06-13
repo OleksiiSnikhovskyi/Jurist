@@ -1,0 +1,167 @@
+{
+  "name": "JUR_Document_Processing_Start",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jur-document-processing-start",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "jur-start-webhook",
+      "name": "Start Processing Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        0
+      ],
+      "webhookId": "jur-document-processing-start"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst required = ['workspace_id', 'user_id', 'package_id'];\nconst missing = required.filter((field) => !body[field]);\nreturn [{\n  json: {\n    ok: missing.length === 0,\n    missing,\n    workspace_id: body.workspace_id,\n    user_id: body.user_id,\n    package_id: body.package_id,\n    requested_agent: body.requested_agent || 'orchestrator',\n    question: body.question || 'Опрацюй завантажені матеріали та підготуй юридичну відповідь.',\n    started_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "jur-validate-package",
+      "name": "Validate Package Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.ok}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "jur-package-valid",
+      "name": "Package Request Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.JUR_API_BASE_URL}}/n8n/intake/process",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "jur-call-processing-api",
+      "name": "Call Package Processing API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        160,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "jur-processing-response",
+      "name": "Processing Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: 'Missing required package fields', missing: $json.missing } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "jur-invalid-response",
+      "name": "Invalid Package Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        160,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Start Processing Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Package Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Package Request": {
+      "main": [
+        [
+          {
+            "node": "Package Request Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Package Request Valid": {
+      "main": [
+        [
+          {
+            "node": "Call Package Processing API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid Package Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Package Processing API": {
+      "main": [
+        [
+          {
+            "node": "Processing Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "versionId": "template"
+}

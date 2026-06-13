@@ -1,0 +1,144 @@
+{
+  "name": "JUR_Obsidian_Vault_Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jur-obsidian-vault-sync",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "jur-obsidian-webhook",
+      "name": "Obsidian Sync Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        0
+      ],
+      "webhookId": "jur-obsidian-vault-sync"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst notes = Array.isArray(body.notes) ? body.notes : [body];\nreturn notes.map((note, index) => ({\n  json: {\n    workspace_id: body.workspace_id || note.workspace_id,\n    user_id: body.user_id || note.user_id,\n    note_path: note.note_path || note.path || `obsidian-note-${index}.md`,\n    title: note.title || null,\n    markdown: note.markdown || note.body || '',\n    frontmatter: note.frontmatter || {},\n    tags: note.tags || [],\n    links: note.links || [],\n    sync_mode: body.sync_mode || 'manual',\n    synced_at: new Date().toISOString()\n  }\n}));"
+      },
+      "id": "jur-normalize-notes",
+      "name": "Normalize Obsidian Notes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "id": "jur-note-batches",
+      "name": "Split Notes In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.JUR_API_BASE_URL}}/n8n/obsidian/sync-note",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "jur-sync-note-api",
+      "name": "Sync Note To API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        160,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, message: 'Obsidian sync accepted' } }}",
+        "options": {}
+      },
+      "id": "jur-obsidian-response",
+      "name": "Obsidian Sync Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        160,
+        -120
+      ]
+    }
+  ],
+  "connections": {
+    "Obsidian Sync Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Obsidian Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Obsidian Notes": {
+      "main": [
+        [
+          {
+            "node": "Split Notes In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Notes In Batches": {
+      "main": [
+        [
+          {
+            "node": "Obsidian Sync Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sync Note To API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Note To API": {
+      "main": [
+        [
+          {
+            "node": "Split Notes In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "versionId": "template"
+}

@@ -2,15 +2,27 @@
 
 Planned workflow templates:
 
-- `JUR_Bot_Intake_Queue.json`
+- `workflows/JUR_Bot_Intake_Queue.json`
+- `workflows/JUR_Document_Processing_Start.json`
+- `workflows/JUR_Obsidian_Vault_Sync.json`
 - `JUR_Document_Ingestion.json`
-- `JUR_Document_Processing_Start.json`
-- `JUR_Obsidian_Vault_Sync.json`
 - `JUR_Legal_Update_Monitoring.json`
 - `JUR_Case_Law_Indexing.json`
 - `JUR_Weekly_Digest.json`
 
 Workflows should call FastAPI webhook endpoints and preserve `workspace_id`, `user_id`, and document confidentiality metadata through every step.
+
+The checked-in templates are inactive by default and use placeholder Telegram credentials:
+
+- `__TELEGRAM_CREDENTIAL_ID__`
+- `__TELEGRAM_CREDENTIAL_NAME__`
+
+After import into n8n, replace those placeholders with the Telegram credential created in the target n8n project.
+
+Required n8n environment variables:
+
+- `JUR_API_BASE_URL`: FastAPI backend URL, for example `http://localhost:8000`.
+- `JUR_N8N_WEBHOOK_BASE_URL`: public n8n webhook base URL, for example `https://n8n.example.com/webhook`.
 
 ## Bot Intake Requirements
 
@@ -64,3 +76,13 @@ Important rules:
 - Treat private vault notes as workspace-scoped private knowledge.
 - Do not process or re-index a vault automatically if the user has configured manual sync mode.
 - Store Obsidian chunks separately enough to identify their source as `obsidian`, while still allowing unified vector search later.
+
+## Template Endpoints
+
+The first workflow templates target these backend integration endpoints:
+
+- `POST /n8n/intake/telegram`: receives normalized Telegram events and updates the pending package.
+- `POST /n8n/intake/process`: starts explicit package processing after `Почати обробку`.
+- `POST /n8n/obsidian/sync-note`: ingests one normalized Obsidian note into workspace-scoped search.
+
+These endpoints are intentionally separate from the public document and agent endpoints so that bot package state, OCR/transcription, and retry metadata can evolve without changing user-facing APIs.

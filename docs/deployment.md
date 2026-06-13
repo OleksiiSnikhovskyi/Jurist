@@ -11,6 +11,8 @@ uvicorn app.main:app --reload
 
 The backend expects PostgreSQL at `DATABASE_URL`. For Codespaces, update `.env` if port forwarding or service names differ.
 
+n8n templates expect `JUR_API_BASE_URL` to point to this FastAPI service and `JUR_N8N_WEBHOOK_BASE_URL` to point to the public n8n webhook base URL.
+
 Default local database settings:
 
 - database: `jur_db`
