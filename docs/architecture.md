@@ -27,3 +27,5 @@ Workspace operations use `WorkspaceService` over `WorkspaceRepository`. Creating
 Document ingestion uses `DocumentUploadService` for file storage and metadata, `DocumentTextExtractor` for supported PDF/DOCX text extraction, and `DocumentChunkingService` to persist workspace-scoped chunks for later embeddings and vector search.
 
 Obsidian vault ingestion is planned as a Markdown knowledge-source path. Vault notes should be treated like workspace-scoped private knowledge, preserving note path, frontmatter, tags, and links as retrieval metadata.
+
+Embedding generation is configured through `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, and `EMBEDDING_DIMENSIONS`. The default `deterministic` provider is for local development and tests only; production semantic search should use a real embedding model with the same vector dimension as the database schema.

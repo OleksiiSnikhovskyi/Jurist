@@ -29,7 +29,7 @@
 ## Stage 4: Search and Agents
 
 - [x] Implement chunk persistence.
-- [ ] Add embedding provider configuration.
+- [x] Add embedding provider configuration.
 - [ ] Add Obsidian Markdown vault ingestion.
 - [ ] Implement vector search with workspace filters.
 - [ ] Implement Contract Review Agent.
