@@ -38,6 +38,7 @@
 ## Stage 5: n8n and Docs
 
 - [ ] Add n8n workflow templates.
+- [ ] Add `JUR_` bot intake workflow for voice, photo, scan, Word, Excel, and PDF packages.
 - [ ] Document API endpoints.
 - [ ] Document deployment.
 - [ ] Document security model.

@@ -26,7 +26,8 @@ The platform is organized as:
 - Users and workspaces.
 - Lawyer profile for each legal professional.
 - Document upload.
-- PDF/DOCX text extraction.
+- PDF/DOCX/XLSX text extraction.
+- Bot intake for voice messages, document photos, scanned copies, Word files, Excel files, and PDFs, with processing started only after an explicit user command.
 - Chunking and embeddings.
 - Vector search.
 - Basic orchestrator.
