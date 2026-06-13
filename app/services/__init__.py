@@ -21,6 +21,11 @@ from app.services.document_text_extractor import (
     DocumentTextExtractor,
     UnsupportedDocumentTypeError,
 )
+from app.services.obsidian_ingestion_service import (
+    ObsidianChunk,
+    ObsidianIngestionService,
+    ObsidianNote,
+)
 from app.services.workspace_service import (
     OWNER_ROLE,
     WorkspaceCreateCommand,
@@ -48,6 +53,9 @@ __all__ = [
     "DocumentTextExtractionError",
     "DocumentTextExtractor",
     "InvalidWorkspaceRoleError",
+    "ObsidianChunk",
+    "ObsidianIngestionService",
+    "ObsidianNote",
     "OWNER_ROLE",
     "WorkspaceCreateCommand",
     "WorkspaceInvalidRoleError",
