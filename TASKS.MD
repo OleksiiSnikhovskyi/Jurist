@@ -5,6 +5,7 @@
 - [x] MVP backend, database, document ingestion, vector search, agents, n8n templates, and documentation are complete.
 - [x] Initial `JUR_` workflows were imported to `https://n8n.csc-ua.tech` and activated.
 - [x] Local development knowledge base was seeded from project Markdown files.
+- [x] Server FastAPI deployment is running on `markiz` and reachable from n8n as `http://agent-jurist-api:8000`.
 
 ## Stage 1: Project Skeleton
 
@@ -64,7 +65,7 @@
 
 - [ ] Choose production legal source folders, Obsidian vaults, or document sets for ingestion.
 - [x] Add legal-source ingestion script for exported NotebookLM/local law corpus files.
-- [ ] Ingest selected Markdown/Obsidian materials into the production workspace.
+- [x] Ingest selected Markdown/Obsidian materials into the production workspace.
 - [ ] Add PDF/DOCX/XLSX bulk ingestion flow for legal source packs.
 - [ ] Add OCR pipeline for photos and scanned documents.
 - [ ] Add voice transcription pipeline for Telegram voice messages.
