@@ -77,7 +77,7 @@
 - [ ] Design Telegram-to-user/workspace binding flow.
 - [x] Add backend model or mapping for Telegram users and workspace access.
 - [x] Apply Telegram binding migration on the server.
-- [ ] Create first real Telegram binding for the production workspace.
+- [x] Create first real Telegram binding for the production workspace.
 - [ ] Add bot commands for choosing workspace/case.
 - [ ] Add package review UX before `Почати обробку`.
 - [ ] Add delete-one-material and cancel-processing behavior end to end.
