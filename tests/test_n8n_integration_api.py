@@ -302,7 +302,10 @@ def test_edit_profile_prompt_updates_existing_lawyer_profile(
         },
     )
     assert first_response.status_code == 200
-    assert "Надішліть новий системний промпт" in first_response.json()["reply_text"]
+    first_reply = first_response.json()["reply_text"]
+    assert "Поточний системний промпт" in first_reply
+    assert "Працюй як український юрист з договірного права." in first_reply
+    assert "Надішліть новий системний промпт" in first_reply
 
     update_response = client.post(
         "/n8n/intake/telegram",

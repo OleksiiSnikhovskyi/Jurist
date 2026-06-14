@@ -496,9 +496,15 @@ class N8nIntegrationService:
                 metadata["onboarding_state"] = "awaiting_system_prompt"
                 binding.metadata_json = metadata
                 self.db.commit()
+            current_prompt = (
+                profile.system_prompt.strip()
+                if profile is not None and profile.system_prompt.strip()
+                else "Системний промпт ще не створено."
+            )
             return N8nIntakeResponse(
                 ok=True,
                 reply_text=(
+                    f"Поточний системний промпт:\n{current_prompt}\n\n"
                     "Надішліть новий системний промпт: хто ви, ваша спеціалізація, "
                     "де і з чим працюєте, чиї інтереси відстоюєте та як має відповідати асистент."
                 ),
