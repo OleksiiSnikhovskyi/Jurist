@@ -50,6 +50,21 @@ def main() -> None:
     )
     parser.add_argument("--output", required=True, help="Target CSV or JSON manifest path.")
     parser.add_argument(
+        "--documents-dir",
+        default="legal_sources",
+        help="Root folder for downloaded official document HTML files.",
+    )
+    parser.add_argument(
+        "--download-documents",
+        action="store_true",
+        help="Download each official document HTML referenced by the prepared manifest.",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite downloaded document files that already exist.",
+    )
+    parser.add_argument(
         "--base-url",
         default="https://zakon.rada.gov.ua",
         help="Base URL for relative links in saved HTML exports.",
@@ -70,8 +85,23 @@ def main() -> None:
         allow_issues=args.allow_issues,
     )
     write_manifest(Path(args.output), prepared)
+    download_result = {"downloaded": 0, "skipped": 0, "failed": 0}
+    if args.download_documents:
+        download_result = download_manifest_documents(
+            prepared,
+            documents_dir=Path(args.documents_dir),
+            overwrite=args.overwrite,
+        )
 
-    print(f"rada_rows={len(rows)} output_rows={len(prepared)} issues={len(issues)}")
+    print(
+        "rada_rows={rows} output_rows={output} issues={issues} "
+        "downloaded={downloaded} skipped={skipped} failed={failed}".format(
+            rows=len(rows),
+            output=len(prepared),
+            issues=len(issues),
+            **download_result,
+        )
+    )
     for issue in issues:
         print(f"{issue['row']}: {issue['field']}: {issue['message']}")
     if issues and not args.allow_issues:
@@ -100,6 +130,36 @@ def read_input(value: str) -> str:
         with urlopen(request, timeout=30) as response:
             return response.read().decode("utf-8", errors="ignore")
     return Path(value).read_text(encoding="utf-8", errors="ignore")
+
+
+def download_manifest_documents(
+    rows: list[dict[str, str]],
+    *,
+    documents_dir: Path,
+    overwrite: bool = False,
+    fetcher: Any = read_input,
+) -> dict[str, int]:
+    counts = {"downloaded": 0, "skipped": 0, "failed": 0}
+    documents_dir.mkdir(parents=True, exist_ok=True)
+    for row in rows:
+        source_url = row.get("source_url") or ""
+        file_path = row.get("file_path") or ""
+        if not source_url or not file_path:
+            counts["failed"] += 1
+            continue
+        target = documents_dir / file_path
+        if target.exists() and not overwrite:
+            counts["skipped"] += 1
+            continue
+        try:
+            html = fetcher(source_url)
+        except Exception:
+            counts["failed"] += 1
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(html, encoding="utf-8")
+        counts["downloaded"] += 1
+    return counts
 
 
 def write_manifest(path: Path, rows: list[dict[str, str]]) -> None:

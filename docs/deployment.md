@@ -96,6 +96,15 @@ py -3 scripts/prepare_priority_legal_source_manifest.py legal_sources/rada_daily
 
 When running without direct internet access, save the Rada page as HTML and pass the local file path to `--input`.
 
+To also download the official HTML texts referenced by the daily arrivals manifest:
+
+```bash
+py -3 scripts/rada_catalog_sync.py --input https://zakon.rada.gov.ua/laws/main/nn --output legal_sources/rada_daily_manifest.csv --documents-dir legal_sources --download-documents
+py -3 scripts/ingest_legal_sources.py legal_sources/official_html/rada --manifest legal_sources/rada_daily_manifest.csv
+```
+
+The downloader writes files using manifest-relative paths such as `legal_sources/official_html/rada/4777-20.html`. Existing files are skipped unless `--overwrite` is passed.
+
 The priority manifest keeps only records that can be tied to official sources and later loaded into PostgreSQL/pgvector. Use this source taxonomy:
 
 - `constitution`: Конституція України.

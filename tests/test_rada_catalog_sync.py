@@ -1,7 +1,22 @@
+import shutil
+from collections.abc import Generator
 from pathlib import Path
+from uuid import uuid4
+
+import pytest
 
 from scripts.prepare_priority_legal_source_manifest import prepare_manifest_rows
-from scripts.rada_catalog_sync import parse_rada_arrivals_html
+from scripts.rada_catalog_sync import download_manifest_documents, parse_rada_arrivals_html
+
+
+@pytest.fixture()
+def sync_dir() -> Generator[Path, None, None]:
+    path = Path("test_uploads") / f"rada-sync-{uuid4()}"
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 def test_parse_rada_arrivals_html_builds_manifest_rows() -> None:
@@ -48,3 +63,33 @@ def test_rada_rows_pass_priority_manifest_validation() -> None:
     assert issues == []
     assert prepared[0]["source_url"].startswith("https://zakon.rada.gov.ua/laws/show/")
     assert prepared[0]["last_checked_at"] == "2026-06-14"
+
+
+def test_download_manifest_documents_writes_official_html(sync_dir: Path) -> None:
+    rows = [
+        {
+            "source_url": "https://zakon.rada.gov.ua/laws/show/4777-20",
+            "file_path": "official_html/rada/4777-20.html",
+        }
+    ]
+
+    counts = download_manifest_documents(
+        rows,
+        documents_dir=sync_dir,
+        fetcher=lambda url: f"<html><body>{url}</body></html>",
+    )
+
+    target = sync_dir / "official_html" / "rada" / "4777-20.html"
+    assert counts == {"downloaded": 1, "skipped": 0, "failed": 0}
+    assert target.read_text(encoding="utf-8") == (
+        "<html><body>https://zakon.rada.gov.ua/laws/show/4777-20</body></html>"
+    )
+
+    second_counts = download_manifest_documents(
+        rows,
+        documents_dir=sync_dir,
+        fetcher=lambda url: "changed",
+    )
+
+    assert second_counts == {"downloaded": 0, "skipped": 1, "failed": 0}
+    assert "changed" not in target.read_text(encoding="utf-8")
