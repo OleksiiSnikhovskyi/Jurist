@@ -4,7 +4,7 @@ import argparse
 import csv
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +12,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.ingest_legal_sources import parse_date, parse_tags  # noqa: E402
 from scripts.legal_source_policy import (  # noqa: E402
     deduplicate_manifest_rows,
     validate_priority_source_entry,
@@ -163,6 +162,28 @@ def clean(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def parse_date(value: Any) -> date | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    text = str(value).strip()
+    for date_format in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text, date_format).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Unsupported date format: {value}")
+
+
+def parse_tags(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [item.strip() for item in str(value).replace(";", ",").split(",") if item.strip()]
 
 
 if __name__ == "__main__":
