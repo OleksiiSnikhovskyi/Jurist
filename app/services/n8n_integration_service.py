@@ -1,13 +1,19 @@
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
 from app.models.client_profile import ClientProfile
+from app.models.document import Document
 from app.models.lawyer_profile import LawyerProfile
+from app.models.legal_source import LegalSource
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
 from app.repositories.document_repository import DocumentRepository
 from app.schemas.n8n_schema import (
     N8nIntakeResponse,
+    N8nLegalSourceUpsertRequest,
+    N8nLegalSourceUpsertResponse,
     N8nObsidianNoteRequest,
     N8nObsidianNoteResponse,
     N8nProcessPackageRequest,
@@ -22,6 +28,10 @@ from app.services.chunking import split_text
 
 
 class IntakePackageNotFoundError(Exception):
+    pass
+
+
+class LegalSourceValidationError(Exception):
     pass
 
 
@@ -269,6 +279,117 @@ class N8nIntegrationService:
             chunk_count=len(persisted_chunks),
             message="Obsidian note synced.",
         )
+
+    def upsert_legal_source(
+        self,
+        request: N8nLegalSourceUpsertRequest,
+    ) -> N8nLegalSourceUpsertResponse:
+        self.access_control.require_permission(
+            workspace_id=request.workspace_id,
+            user_id=request.user_id,
+            permission=WorkspacePermission.WRITE_DOCUMENTS,
+        )
+        if urlparse(request.source_url).hostname != "zakon.rada.gov.ua":
+            raise LegalSourceValidationError("Only official zakon.rada.gov.ua sources are accepted here.")
+
+        legal_source = (
+            self.db.query(LegalSource).filter(LegalSource.source_url == request.source_url).one_or_none()
+        )
+        if legal_source is None:
+            legal_source = LegalSource(
+                source_type=request.source_type,
+                source_name=request.source_name,
+                source_url=request.source_url,
+            )
+            self.db.add(legal_source)
+            self.db.flush()
+
+        legal_source.source_type = request.source_type
+        legal_source.source_name = request.source_name
+        legal_source.source_url = request.source_url
+        legal_source.jurisdiction = request.jurisdiction
+        legal_source.document_number = request.document_number
+        legal_source.adoption_date = self._parse_optional_date(request.adoption_date)
+        legal_source.effective_date = self._parse_optional_date(request.effective_date)
+        legal_source.validity_status = request.validity_status
+        legal_source.last_checked_at = request.last_checked_at or datetime.now(UTC)
+        legal_source.topic_tags = request.topic_tags
+        legal_source.summary = request.summary
+        legal_source.full_text = request.full_text
+
+        file_path = request.file_path or f"rada://{request.source_url}"
+        document = (
+            self.db.query(Document)
+            .filter(
+                Document.workspace_id == request.workspace_id,
+                Document.file_path == file_path,
+            )
+            .one_or_none()
+        )
+        if document is None:
+            document = Document(
+                workspace_id=request.workspace_id,
+                uploaded_by=request.user_id,
+                document_name=request.source_name,
+                document_type=f"legal_source_{request.source_type}",
+                file_path=file_path,
+                extracted_text=request.full_text,
+                confidentiality_level="public",
+            )
+            self.db.add(document)
+            self.db.flush()
+        else:
+            document.uploaded_by = request.user_id
+            document.document_name = request.source_name
+            document.document_type = f"legal_source_{request.source_type}"
+            document.extracted_text = request.full_text
+
+        chunks = split_text(
+            request.full_text,
+            chunk_size=request.chunk_size,
+            overlap=request.overlap,
+        )
+        self.document_repository.delete_chunks_for_document(document.id)
+        persisted_chunks = self.document_repository.create_document_chunks(
+            document_id=document.id,
+            workspace_id=request.workspace_id,
+            chunks=chunks,
+        )
+        self.audit_log_service.record(
+            AuditLogCommand(
+                action="n8n.legal_source_upserted",
+                user_id=request.user_id,
+                workspace_id=request.workspace_id,
+                object_type="legal_source",
+                object_id=legal_source.id,
+                metadata={
+                    "source_url": request.source_url,
+                    "source_type": request.source_type,
+                    "document_id": document.id,
+                    "chunk_count": len(persisted_chunks),
+                    "tag_count": len(request.topic_tags),
+                },
+            ),
+            commit=False,
+        )
+        self.db.commit()
+        return N8nLegalSourceUpsertResponse(
+            ok=True,
+            legal_source_id=legal_source.id,
+            document_id=document.id,
+            chunk_count=len(persisted_chunks),
+            message="Legal source synced.",
+        )
+
+    def _parse_optional_date(self, value: str | None) -> date | None:
+        if not value:
+            return None
+        for date_format in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+            try:
+                return datetime.strptime(value, date_format).date()
+            except ValueError:
+                continue
+        raise LegalSourceValidationError(f"Unsupported date format: {value}")
 
     def _handle_client_profile_onboarding(self, event: TelegramIntakeEvent) -> N8nIntakeResponse | None:
         binding = self._get_active_binding(event.telegram_user_id)

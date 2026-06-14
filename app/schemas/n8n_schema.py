@@ -98,3 +98,31 @@ class N8nObsidianNoteResponse(BaseModel):
     message: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class N8nLegalSourceUpsertRequest(BaseModel):
+    workspace_id: str
+    user_id: str
+    source_name: str
+    source_type: str = "law"
+    source_url: str
+    document_number: str | None = None
+    adoption_date: str | None = None
+    effective_date: str | None = None
+    validity_status: str = "current"
+    last_checked_at: datetime | None = None
+    topic_tags: list[str] = Field(default_factory=list)
+    summary: str | None = None
+    full_text: str
+    file_path: str | None = None
+    jurisdiction: str = "Ukraine"
+    chunk_size: int = 1200
+    overlap: int = 150
+
+
+class N8nLegalSourceUpsertResponse(BaseModel):
+    ok: bool
+    legal_source_id: str
+    document_id: str
+    chunk_count: int
+    message: str

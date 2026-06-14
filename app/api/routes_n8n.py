@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.n8n_schema import (
     N8nIntakeResponse,
+    N8nLegalSourceUpsertRequest,
+    N8nLegalSourceUpsertResponse,
     N8nObsidianNoteRequest,
     N8nObsidianNoteResponse,
     N8nProcessPackageRequest,
@@ -13,7 +15,11 @@ from app.schemas.n8n_schema import (
     TelegramIntakeEvent,
 )
 from app.services.access_control import AccessDeniedError
-from app.services.n8n_integration_service import IntakePackageNotFoundError, N8nIntegrationService
+from app.services.n8n_integration_service import (
+    IntakePackageNotFoundError,
+    LegalSourceValidationError,
+    N8nIntegrationService,
+)
 
 
 router = APIRouter(prefix="/n8n", tags=["n8n"])
@@ -61,5 +67,18 @@ def sync_obsidian_note(
 ) -> N8nObsidianNoteResponse:
     try:
         return N8nIntegrationService(db).sync_obsidian_note(request)
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/legal-sources/upsert", response_model=N8nLegalSourceUpsertResponse)
+def upsert_legal_source(
+    request: N8nLegalSourceUpsertRequest,
+    db: Session = Depends(get_db),
+) -> N8nLegalSourceUpsertResponse:
+    try:
+        return N8nIntegrationService(db).upsert_legal_source(request)
+    except LegalSourceValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except AccessDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc

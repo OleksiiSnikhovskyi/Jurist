@@ -51,3 +51,18 @@ def test_obsidian_template_uses_batch_processing() -> None:
     assert "n8n-nodes-base.webhook" in node_types
     assert "n8n-nodes-base.splitInBatches" in node_types
     assert "n8n-nodes-base.httpRequest" in node_types
+
+
+def test_rada_qwen_template_syncs_official_sources_through_api() -> None:
+    workflow = json.loads((WORKFLOW_DIR / "JUR_Rada_Law_Sync_Qwen.json").read_text(encoding="utf-8"))
+    workflow_text = json.dumps(workflow, ensure_ascii=False)
+    node_types = {node["type"] for node in workflow["nodes"]}
+
+    assert "n8n-nodes-base.scheduleTrigger" in node_types
+    assert "n8n-nodes-base.splitInBatches" in node_types
+    assert "n8n-nodes-base.code" in node_types
+    assert "https://zakon.rada.gov.ua/laws/main/nn" in workflow_text
+    assert "qwen3:8" in workflow_text
+    assert "/api/chat" in workflow_text
+    assert "/n8n/legal-sources/upsert" in workflow_text
+    assert "JUR_RADA_SYNC_LIMIT" in workflow_text

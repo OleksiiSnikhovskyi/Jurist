@@ -147,6 +147,21 @@ Telegram client-profile actions:
 
 The selected client profile is stored in Telegram binding metadata as `active_client_profile_id`. When the user presses `Почати обробку`, this ID is copied to the intake package metadata as `client_profile_id`.
 
+### `POST /n8n/legal-sources/upsert`
+
+Stores or updates one official legal source from `zakon.rada.gov.ua`, creates/updates the corresponding workspace document, and rebuilds chunks for later pgvector search.
+
+Expected fields:
+
+- `workspace_id`, `user_id`
+- `source_name`, `source_type`, `source_url`
+- `document_number`, `adoption_date`, `effective_date`, `validity_status`
+- `last_checked_at`, `topic_tags`, `summary`
+- `full_text`
+- optional `file_path`, `jurisdiction`, `chunk_size`, `overlap`
+
+This endpoint accepts only official `zakon.rada.gov.ua` URLs. Local LLM output may be passed in `summary`, `topic_tags`, and `source_type`, but official metadata and `full_text` should come from the Rada source page.
+
 `POST /n8n/telegram/bindings`
 
 Creates or updates the active mapping between a Telegram account and an application workspace user. The target `user_id` must already have `write_documents` permission in the target `workspace_id`.

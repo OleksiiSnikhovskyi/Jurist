@@ -69,6 +69,7 @@
 - [x] Add priority legal-source manifest policy for official domains, metadata, deduplication, and source freshness.
 - [x] Add Verkhovna Rada catalog/daily-arrivals manifest sync for `zakon.rada.gov.ua`.
 - [x] Add Rada daily sync runner that can download official HTML documents for ingestion.
+- [x] Add `JUR_Rada_Law_Sync_Qwen` n8n template and API upsert endpoint for Ollama/Qwen-enriched Rada ingestion.
 - [x] Ingest selected Markdown/Obsidian materials into the production workspace.
 - [x] Add PDF/DOCX/XLSX/HTML bulk ingestion flow for legal source packs.
 - [ ] Add OCR pipeline for photos and scanned documents.

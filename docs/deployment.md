@@ -106,6 +106,25 @@ py -3 scripts/ingest_legal_sources.py legal_sources/official_html/rada --manifes
 The downloader writes files using manifest-relative paths such as `legal_sources/official_html/rada/4777-20.html`. Existing files are skipped unless `--overwrite` is passed.
 Daily Rada sync skips rows that fail priority-manifest validation and still writes valid rows. Add `--strict` when running an audit job that should fail on any invalid or incomplete source row.
 
+The n8n template `JUR_Rada_Law_Sync_Qwen` automates the same daily-arrivals flow with local Ollama enrichment:
+
+1. Fetch `https://zakon.rada.gov.ua/laws/main/nn`.
+2. Parse official document links from the Rada page.
+3. Download each document HTML in batches.
+4. Ask local Ollama `qwen3:8` only for enrichment fields: summary, thematic tags, and source-type classification.
+5. Send the official text and metadata to `POST /n8n/legal-sources/upsert`.
+
+Required n8n environment variables:
+
+- `JUR_API_BASE_URL`: FastAPI base URL reachable from n8n.
+- `JUR_KB_WORKSPACE_ID`: workspace that stores the legal corpus.
+- `JUR_KB_USER_ID`: curator user used for audit logs.
+- `JUR_OLLAMA_BASE_URL`: Ollama HTTP API URL, for example `http://host.docker.internal:11434`.
+- `JUR_OLLAMA_MODEL`: default `qwen3:8`.
+- `JUR_RADA_SYNC_LIMIT`: safety limit for documents per run, default `20`.
+
+Qwen enrichment is not treated as an official source. The canonical title, URL, text, and validity metadata must come from `zakon.rada.gov.ua`; Qwen may only add tags and a short internal summary.
+
 The priority manifest keeps only records that can be tied to official sources and later loaded into PostgreSQL/pgvector. Use this source taxonomy:
 
 - `constitution`: Конституція України.
