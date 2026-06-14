@@ -111,7 +111,7 @@ The n8n template `JUR_Rada_Law_Sync_Qwen` automates the same daily-arrivals flow
 1. Fetch `https://zakon.rada.gov.ua/laws/main/nn`.
 2. Parse official document links from the Rada page.
 3. Download each document HTML in batches.
-4. Ask local Ollama `qwen3:8` only for enrichment fields: summary, thematic tags, and source-type classification.
+4. Ask local Ollama `qwen3:8b` only for enrichment fields: summary, thematic tags, and source-type classification.
 5. Send the official text and metadata to `POST /n8n/legal-sources/upsert`.
 
 Required n8n environment variables:
@@ -119,8 +119,8 @@ Required n8n environment variables:
 - `JUR_API_BASE_URL`: FastAPI base URL reachable from n8n.
 - `JUR_KB_WORKSPACE_ID`: workspace that stores the legal corpus.
 - `JUR_KB_USER_ID`: curator user used for audit logs.
-- `JUR_OLLAMA_BASE_URL`: Ollama HTTP API URL, for example `http://host.docker.internal:11434`.
-- `JUR_OLLAMA_MODEL`: default `qwen3:8`.
+- `JUR_OLLAMA_BASE_URL`: Ollama HTTP API URL. On the current server, n8n reaches Ollama at `http://172.18.0.1:11434`.
+- `JUR_OLLAMA_MODEL`: default `qwen3:8b`.
 - `JUR_RADA_SYNC_LIMIT`: safety limit for documents per run, default `20`.
 
 Qwen enrichment is not treated as an official source. The canonical title, URL, text, and validity metadata must come from `zakon.rada.gov.ua`; Qwen may only add tags and a short internal summary.
