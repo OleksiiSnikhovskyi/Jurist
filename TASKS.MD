@@ -60,7 +60,7 @@
 - [x] Smoke-test `/health`, `/n8n/intake/telegram`, `/n8n/intake/process`, and `/n8n/obsidian/sync-note` from the server.
 - [x] Activate imported `JUR_` workflows.
 - [x] Add backend Telegram-to-workspace binding support for real bot intake.
-- [ ] Send a controlled Telegram test message and verify `n8n_intake_packages` / `n8n_intake_items`.
+- [x] Send a controlled Telegram test message and verify `n8n_intake_packages` / `n8n_intake_items`.
 
 ## Stage 7: Knowledge Base Expansion
 

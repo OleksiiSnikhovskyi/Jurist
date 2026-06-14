@@ -385,6 +385,39 @@ def test_telegram_active_client_is_attached_to_package_on_processing(
     assert package.metadata_json["client_profile_id"] == "client-1"
 
 
+def test_start_processing_clears_incomplete_client_profile_draft(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(
+        db_session,
+        metadata={
+            "onboarding_state": "awaiting_client_interests",
+            "client_profile_draft": {
+                "display_name": "Олексій Сніховський",
+                "matter_role": "Потрібно проаналізувати договір.",
+            },
+        },
+    )
+
+    response = client.post(
+        "/n8n/intake/telegram",
+        json={
+            "chat_id": "100",
+            "telegram_user_id": "200",
+            "text": "Почати обробку",
+            "action": "start_processing",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    binding = db_session.query(N8nTelegramBinding).one()
+    assert binding.metadata_json == {}
+
+
 def test_telegram_select_client_profile_by_name(
     client: TestClient,
     db_session: Session,

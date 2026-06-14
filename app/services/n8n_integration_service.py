@@ -83,6 +83,7 @@ class N8nIntegrationService:
             package.requested_agent = event.requested_agent or "orchestrator"
             package.question = event.question or event.text
             self._attach_active_client_profile(package, event)
+            self._clear_incomplete_client_profile_draft(event)
             reply_text = "Пакет поставлено в чергу на обробку."
         else:
             added_count = self._append_event_items(package, event)
@@ -464,6 +465,17 @@ class N8nIntegrationService:
         package_metadata = dict(package.metadata_json or {})
         package_metadata["client_profile_id"] = active_client_profile_id
         package.metadata_json = package_metadata
+
+    def _clear_incomplete_client_profile_draft(self, event: TelegramIntakeEvent) -> None:
+        binding = self._get_active_binding(event.telegram_user_id)
+        if binding is None:
+            return
+        metadata = dict(binding.metadata_json or {})
+        onboarding_state = metadata.get("onboarding_state")
+        if isinstance(onboarding_state, str) and onboarding_state.startswith("awaiting_client_"):
+            metadata.pop("onboarding_state", None)
+            metadata.pop("client_profile_draft", None)
+            binding.metadata_json = metadata
 
     def _record_client_profile_update(
         self,
