@@ -78,11 +78,14 @@
 - [x] Allow Telegram users to update their personal system prompt.
 - [x] Add workspace-scoped client profiles for processing context.
 - [x] Include `client_profile_id` in agent/package processing requests.
+- [x] Add Telegram client-profile onboarding and active client selection.
+- [x] Attach active Telegram client profile to packages on `Почати обробку`.
 - [ ] Design full Telegram-to-user/workspace binding flow.
 - [x] Add backend model or mapping for Telegram users and workspace access.
 - [x] Apply Telegram binding migration on the server.
 - [x] Create first real Telegram binding for the production workspace.
 - [x] Deploy updated Telegram profile prompt buttons to the active n8n workflow.
+- [x] Add bot commands for choosing active client profile.
 - [ ] Add bot commands for choosing workspace/case.
 - [ ] Add package review UX before `Почати обробку`.
 - [ ] Add delete-one-material and cancel-processing behavior end to end.

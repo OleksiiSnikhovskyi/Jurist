@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.models.client_profile import ClientProfile
 from app.models.lawyer_profile import LawyerProfile
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
 from app.repositories.document_repository import DocumentRepository
@@ -62,6 +63,10 @@ class N8nIntegrationService:
         if profile_response is not None:
             return profile_response
 
+        client_profile_response = self._handle_client_profile_onboarding(event)
+        if client_profile_response is not None:
+            return client_profile_response
+
         package = self._get_or_create_pending_package(event)
 
         if event.action == "clear_package":
@@ -77,6 +82,7 @@ class N8nIntegrationService:
             package.status = "queued"
             package.requested_agent = event.requested_agent or "orchestrator"
             package.question = event.question or event.text
+            self._attach_active_client_profile(package, event)
             reply_text = "Пакет поставлено в чергу на обробку."
         else:
             added_count = self._append_event_items(package, event)
@@ -261,6 +267,220 @@ class N8nIntegrationService:
             document_id=document.id,
             chunk_count=len(persisted_chunks),
             message="Obsidian note synced.",
+        )
+
+    def _handle_client_profile_onboarding(self, event: TelegramIntakeEvent) -> N8nIntakeResponse | None:
+        binding = self._get_active_binding(event.telegram_user_id)
+        if binding is None:
+            return None
+
+        metadata = dict(binding.metadata_json or {})
+        onboarding_state = metadata.get("onboarding_state")
+        draft = dict(metadata.get("client_profile_draft") or {})
+
+        if event.action in {"create_client_profile", "edit_client_profile"}:
+            metadata["onboarding_state"] = "awaiting_client_display_name"
+            metadata["client_profile_draft"] = {}
+            binding.metadata_json = metadata
+            self.db.commit()
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text="Введіть ім'я або назву клієнта.",
+            )
+
+        if event.action == "select_client_profile":
+            profiles = self._list_client_profiles(event.workspace_id)
+            if not profiles:
+                return N8nIntakeResponse(
+                    ok=True,
+                    reply_text="Профілі клієнтів ще не створені. Натисніть 'Створити профіль клієнта'.",
+                )
+            metadata["onboarding_state"] = "awaiting_client_selection"
+            binding.metadata_json = metadata
+            self.db.commit()
+            names = "\n".join(f"- {profile.display_name}" for profile in profiles[:10])
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text=f"Напишіть назву клієнта зі списку:\n{names}",
+            )
+
+        if event.action == "show_active_client_profile":
+            profile = self._get_active_client_profile(metadata)
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text=(
+                    self._format_active_client_profile(profile)
+                    if profile is not None
+                    else "Активний клієнт не обраний. Створіть або оберіть профіль клієнта."
+                ),
+            )
+
+        if onboarding_state == "awaiting_client_selection" and event.action == "free_text" and event.text:
+            profile = self._find_client_profile_by_name(event.workspace_id, event.text)
+            if profile is None:
+                return N8nIntakeResponse(
+                    ok=True,
+                    reply_text="Не знайшов такого клієнта. Надішліть назву точно зі списку або створіть новий профіль.",
+                )
+            metadata["active_client_profile_id"] = profile.id
+            metadata.pop("onboarding_state", None)
+            binding.metadata_json = metadata
+            self.db.commit()
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text=f"Активний клієнт: {profile.display_name}. Його профіль буде додано до обробки запитів.",
+            )
+
+        if onboarding_state == "awaiting_client_display_name" and event.action == "free_text" and event.text:
+            draft["display_name"] = event.text.strip()
+            metadata["client_profile_draft"] = draft
+            metadata["onboarding_state"] = "awaiting_client_matter_role"
+            binding.metadata_json = metadata
+            self.db.commit()
+            return N8nIntakeResponse(ok=True, reply_text="Яка роль клієнта у справі?")
+
+        if onboarding_state == "awaiting_client_matter_role" and event.action == "free_text" and event.text:
+            draft["matter_role"] = event.text.strip()
+            metadata["client_profile_draft"] = draft
+            metadata["onboarding_state"] = "awaiting_client_interests"
+            binding.metadata_json = metadata
+            self.db.commit()
+            return N8nIntakeResponse(ok=True, reply_text="Які інтереси клієнта потрібно відстоювати?")
+
+        if onboarding_state == "awaiting_client_interests" and event.action == "free_text" and event.text:
+            draft["interests"] = event.text.strip()
+            metadata["client_profile_draft"] = draft
+            metadata["onboarding_state"] = "awaiting_client_risk_preferences"
+            binding.metadata_json = metadata
+            self.db.commit()
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text="Які ризикові побажання клієнта? Наприклад: обережна позиція, швидке врегулювання, готовність до суду.",
+            )
+
+        if onboarding_state == "awaiting_client_risk_preferences" and event.action == "free_text" and event.text:
+            draft["risk_preferences"] = event.text.strip()
+            metadata["client_profile_draft"] = draft
+            metadata["onboarding_state"] = "awaiting_client_communication_preferences"
+            binding.metadata_json = metadata
+            self.db.commit()
+            return N8nIntakeResponse(ok=True, reply_text="Який стиль комунікації/відповіді бажаний для цього клієнта?")
+
+        if (
+            onboarding_state == "awaiting_client_communication_preferences"
+            and event.action == "free_text"
+            and event.text
+        ):
+            draft["communication_preferences"] = event.text.strip()
+            profile = self._create_client_profile_from_draft(event, draft)
+            metadata["active_client_profile_id"] = profile.id
+            metadata.pop("onboarding_state", None)
+            metadata.pop("client_profile_draft", None)
+            binding.metadata_json = metadata
+            self._record_client_profile_update(event, profile.id, "created")
+            self.db.commit()
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text=(
+                    f"Профіль клієнта '{profile.display_name}' створено і зроблено активним. "
+                    "Його контекст буде додано до обробки запитів."
+                ),
+            )
+
+        return None
+
+    def _create_client_profile_from_draft(
+        self,
+        event: TelegramIntakeEvent,
+        draft: dict,
+    ) -> ClientProfile:
+        profile = ClientProfile(
+            workspace_id=event.workspace_id,
+            created_by=event.user_id,
+            display_name=draft.get("display_name") or "Клієнт",
+            matter_role=draft.get("matter_role"),
+            interests=draft.get("interests"),
+            risk_preferences=draft.get("risk_preferences"),
+            communication_preferences=draft.get("communication_preferences"),
+            extra_context={"source": "telegram_onboarding"},
+        )
+        self.db.add(profile)
+        self.db.flush()
+        return profile
+
+    def _list_client_profiles(self, workspace_id: str | None) -> list[ClientProfile]:
+        if not workspace_id:
+            return []
+        return (
+            self.db.query(ClientProfile)
+            .filter(ClientProfile.workspace_id == workspace_id)
+            .order_by(ClientProfile.created_at.desc())
+            .all()
+        )
+
+    def _find_client_profile_by_name(
+        self,
+        workspace_id: str | None,
+        display_name: str,
+    ) -> ClientProfile | None:
+        clean_name = display_name.strip().lower()
+        for profile in self._list_client_profiles(workspace_id):
+            if profile.display_name.lower() == clean_name:
+                return profile
+        return None
+
+    def _get_active_client_profile(self, metadata: dict) -> ClientProfile | None:
+        active_client_profile_id = metadata.get("active_client_profile_id")
+        if not active_client_profile_id:
+            return None
+        return self.db.get(ClientProfile, active_client_profile_id)
+
+    def _format_active_client_profile(self, profile: ClientProfile) -> str:
+        lines = [
+            f"Активний клієнт: {profile.display_name}",
+            f"Роль: {profile.matter_role}" if profile.matter_role else None,
+            f"Інтереси: {profile.interests}" if profile.interests else None,
+            f"Ризикові побажання: {profile.risk_preferences}" if profile.risk_preferences else None,
+            (
+                f"Комунікаційні побажання: {profile.communication_preferences}"
+                if profile.communication_preferences
+                else None
+            ),
+        ]
+        return "\n".join(line for line in lines if line)
+
+    def _attach_active_client_profile(
+        self,
+        package: N8nIntakePackage,
+        event: TelegramIntakeEvent,
+    ) -> None:
+        binding = self._get_active_binding(event.telegram_user_id)
+        if binding is None:
+            return
+        binding_metadata = dict(binding.metadata_json or {})
+        active_client_profile_id = binding_metadata.get("active_client_profile_id")
+        if not active_client_profile_id:
+            return
+        package_metadata = dict(package.metadata_json or {})
+        package_metadata["client_profile_id"] = active_client_profile_id
+        package.metadata_json = package_metadata
+
+    def _record_client_profile_update(
+        self,
+        event: TelegramIntakeEvent,
+        profile_id: str,
+        update_type: str,
+    ) -> None:
+        self.audit_log_service.record(
+            AuditLogCommand(
+                action="n8n.telegram_client_profile_updated",
+                user_id=event.user_id,
+                workspace_id=event.workspace_id,
+                object_type="client_profile",
+                object_id=profile_id,
+                metadata={"update_type": update_type, "chat_id": event.chat_id},
+            ),
+            commit=False,
         )
 
     def _handle_profile_onboarding(self, event: TelegramIntakeEvent) -> N8nIntakeResponse | None:

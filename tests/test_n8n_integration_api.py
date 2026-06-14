@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.main import app
 from app.models.audit_log import AuditLog
+from app.models.client_profile import ClientProfile
 from app.models.document import Document, DocumentChunk
 from app.models.lawyer_profile import LawyerProfile
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
@@ -30,6 +31,7 @@ def db_session() -> Generator[Session, None, None]:
             Workspace.__table__,
             WorkspaceMember.__table__,
             LawyerProfile.__table__,
+            ClientProfile.__table__,
             Document.__table__,
             DocumentChunk.__table__,
             AuditLog.__table__,
@@ -80,6 +82,38 @@ def _seed_lawyer_profile(db: Session) -> None:
         )
     )
     db.commit()
+
+
+def _seed_telegram_binding(db: Session, metadata: dict | None = None) -> None:
+    db.add(
+        N8nTelegramBinding(
+            telegram_user_id="200",
+            telegram_chat_id="100",
+            workspace_id="workspace-1",
+            user_id="user-1",
+            is_active=True,
+            metadata_json=metadata,
+        )
+    )
+    db.commit()
+
+
+def _post_telegram_text(
+    client: TestClient,
+    text: str,
+    action: str = "free_text",
+) -> dict:
+    response = client.post(
+        "/n8n/intake/telegram",
+        json={
+            "chat_id": "100",
+            "telegram_user_id": "200",
+            "text": text,
+            "action": action,
+        },
+    )
+    assert response.status_code == 200
+    return response.json()
 
 
 def test_telegram_intake_requires_workspace_binding(client: TestClient) -> None:
@@ -284,6 +318,93 @@ def test_edit_profile_prompt_updates_existing_lawyer_profile(
     assert "Системний промпт оновлено" in update_response.json()["reply_text"]
     profile = db_session.query(LawyerProfile).filter_by(user_id="user-1").one()
     assert profile.system_prompt == "Я адвокат у сфері податкових спорів, відповідай стисло."
+
+
+def test_telegram_client_profile_onboarding_creates_active_client(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session)
+
+    start_payload = _post_telegram_text(client, "Створити профіль клієнта", "create_client_profile")
+    assert "ім'я або назву клієнта" in start_payload["reply_text"]
+
+    assert "роль клієнта" in _post_telegram_text(client, "ТОВ Приклад")["reply_text"]
+    assert "інтереси клієнта" in _post_telegram_text(client, "позивач")["reply_text"]
+    assert "ризикові побажання" in _post_telegram_text(
+        client,
+        "Стягнути борг і зберегти партнерські відносини.",
+    )["reply_text"]
+    assert "стиль комунікації" in _post_telegram_text(client, "Обережна позиція.")["reply_text"]
+
+    done_payload = _post_telegram_text(client, "Короткий executive summary.")
+    assert "створено і зроблено активним" in done_payload["reply_text"]
+
+    profile = db_session.query(ClientProfile).one()
+    assert profile.display_name == "ТОВ Приклад"
+    assert profile.matter_role == "позивач"
+    binding = db_session.query(N8nTelegramBinding).one()
+    assert binding.metadata_json["active_client_profile_id"] == profile.id
+
+
+def test_telegram_active_client_is_attached_to_package_on_processing(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    db_session.add(
+        ClientProfile(
+            id="client-1",
+            workspace_id="workspace-1",
+            created_by="user-1",
+            display_name="ТОВ Приклад",
+            interests="Стягнути борг.",
+        )
+    )
+    _seed_telegram_binding(db_session, metadata={"active_client_profile_id": "client-1"})
+
+    response = client.post(
+        "/n8n/intake/telegram",
+        json={
+            "chat_id": "100",
+            "telegram_user_id": "200",
+            "text": "Почати обробку",
+            "action": "start_processing",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    package = db_session.query(N8nIntakePackage).one()
+    assert package.metadata_json["client_profile_id"] == "client-1"
+
+
+def test_telegram_select_client_profile_by_name(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    db_session.add(
+        ClientProfile(
+            id="client-1",
+            workspace_id="workspace-1",
+            created_by="user-1",
+            display_name="ТОВ Приклад",
+        )
+    )
+    _seed_telegram_binding(db_session)
+
+    list_payload = _post_telegram_text(client, "Обрати клієнта", "select_client_profile")
+    assert "ТОВ Приклад" in list_payload["reply_text"]
+
+    selected_payload = _post_telegram_text(client, "ТОВ Приклад")
+    assert "Активний клієнт: ТОВ Приклад" in selected_payload["reply_text"]
+    binding = db_session.query(N8nTelegramBinding).one()
+    assert binding.metadata_json["active_client_profile_id"] == "client-1"
 
 
 def test_inactive_telegram_binding_is_ignored(

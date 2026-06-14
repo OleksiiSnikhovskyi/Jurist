@@ -51,6 +51,8 @@ Telegram file IDs, filenames, MIME types, message IDs, and chat/user IDs are sto
 
 After Telegram binding, a lawyer profile is required before materials are collected. If no profile exists, the bot asks `Який напрямок Вашої діяльності?` and stores the answer as the initial profile context. The user must always be able to replace their system prompt later; the Telegram action `Змінити системний промпт` updates only the profile prompt and does not add that text as case material.
 
+Telegram client-profile onboarding stores only structured profile fields and the active `client_profile_id` in binding/package metadata. The active client profile is workspace-scoped and is copied into package metadata only when the user explicitly chooses `Почати обробку`.
+
 ## Obsidian Vault Security
 
 Obsidian notes are treated as private workspace knowledge. Sync only explicitly configured notes or folders, preserve source paths as metadata, and never index an entire vault automatically unless the lawyer has configured that behavior. Synced notes become `obsidian_markdown` documents and are subject to the same workspace-scoped vector search rules as uploaded documents.

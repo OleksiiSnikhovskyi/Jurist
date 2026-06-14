@@ -135,6 +135,15 @@ Receives normalized Telegram events from `JUR_Bot_Intake_Queue`. If `workspace_i
 
 If the bound user has no lawyer profile yet, this endpoint asks `Який напрямок Вашої діяльності?` and stores the next free-text answer as the first profile/system-prompt basis instead of adding it to a document package. The `Змінити системний промпт` bot action lets the user replace the profile prompt later.
 
+Telegram client-profile actions:
+
+- `Створити профіль клієнта`: starts a step-by-step client profile dialog.
+- `Обрати клієнта`: lists recent workspace client profiles and waits for the exact client name.
+- `Показати активного клієнта`: shows the currently selected client context.
+- `Змінити профіль клієнта`: starts a replacement client-profile dialog.
+
+The selected client profile is stored in Telegram binding metadata as `active_client_profile_id`. When the user presses `Почати обробку`, this ID is copied to the intake package metadata as `client_profile_id`.
+
 `POST /n8n/telegram/bindings`
 
 Creates or updates the active mapping between a Telegram account and an application workspace user. The target `user_id` must already have `write_documents` permission in the target `workspace_id`.
