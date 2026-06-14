@@ -1,3 +1,4 @@
+import gzip
 import shutil
 from collections.abc import Generator
 from pathlib import Path
@@ -6,7 +7,11 @@ from uuid import uuid4
 import pytest
 
 from scripts.prepare_priority_legal_source_manifest import prepare_manifest_rows
-from scripts.rada_catalog_sync import download_manifest_documents, parse_rada_arrivals_html
+from scripts.rada_catalog_sync import (
+    _decode_response_body,
+    download_manifest_documents,
+    parse_rada_arrivals_html,
+)
 
 
 @pytest.fixture()
@@ -93,3 +98,9 @@ def test_download_manifest_documents_writes_official_html(sync_dir: Path) -> Non
 
     assert second_counts == {"downloaded": 0, "skipped": 1, "failed": 0}
     assert "changed" not in target.read_text(encoding="utf-8")
+
+
+def test_decode_response_body_supports_gzip() -> None:
+    raw = gzip.compress("Найновіші надходження".encode())
+
+    assert _decode_response_body(raw, "gzip") == "Найновіші надходження"

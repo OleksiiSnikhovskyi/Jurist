@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import json
 import re
 import sys
@@ -126,10 +127,23 @@ def parse_rada_arrivals_html(
 def read_input(value: str) -> str:
     parsed = urlparse(value)
     if parsed.scheme in {"http", "https"}:
-        request = Request(value, headers={"User-Agent": "JuristBot/0.1 (+https://github.com/)"})
+        request = Request(
+            value,
+            headers={
+                "User-Agent": "JuristBot/0.1 (+https://github.com/)",
+                "Accept-Encoding": "gzip, identity",
+            },
+        )
         with urlopen(request, timeout=30) as response:
-            return response.read().decode("utf-8", errors="ignore")
+            return _decode_response_body(response.read(), response.headers.get("Content-Encoding"))
     return Path(value).read_text(encoding="utf-8", errors="ignore")
+
+
+def _decode_response_body(raw: bytes, content_encoding: str | None) -> str:
+    encoding = (content_encoding or "").lower()
+    if "gzip" in encoding or raw.startswith(b"\x1f\x8b"):
+        raw = gzip.decompress(raw)
+    return raw.decode("utf-8", errors="ignore")
 
 
 def download_manifest_documents(
