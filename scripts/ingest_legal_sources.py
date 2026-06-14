@@ -30,7 +30,7 @@ from scripts.ingest_markdown_knowledge_base import (
 )
 
 
-SUPPORTED_EXTENSIONS = frozenset({".pdf", ".docx", ".txt", ".md"})
+SUPPORTED_EXTENSIONS = frozenset({".pdf", ".docx", ".xlsx", ".txt", ".md", ".html", ".htm"})
 
 
 @dataclass(frozen=True)

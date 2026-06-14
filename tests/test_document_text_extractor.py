@@ -2,6 +2,7 @@ import shutil
 from collections.abc import Generator
 from pathlib import Path
 from uuid import uuid4
+from zipfile import ZipFile
 
 import pytest
 from docx import Document as DocxDocument
@@ -43,6 +44,37 @@ def test_extract_pdf_text(parser_dir: Path) -> None:
 
     assert text is not None
     assert "Hello PDF contract" in text
+
+
+def test_extract_xlsx_text_includes_rows_and_shared_strings(parser_dir: Path) -> None:
+    file_path = parser_dir / "sample.xlsx"
+    _write_simple_xlsx(file_path)
+
+    text = DocumentTextExtractor().extract_text(file_path)
+
+    assert text is not None
+    assert "Назва\tЗначення" in text
+    assert "Площа\t120" in text
+
+
+def test_extract_html_text_ignores_scripts(parser_dir: Path) -> None:
+    file_path = parser_dir / "law.htm"
+    file_path.write_text(
+        """
+        <html>
+          <head><script>hidden()</script><style>.x { color: red; }</style></head>
+          <body><h1>Конституція України</h1><p>Стаття 1. Україна є суверенна.</p></body>
+        </html>
+        """,
+        encoding="utf-8",
+    )
+
+    text = DocumentTextExtractor().extract_text(file_path)
+
+    assert text is not None
+    assert "Конституція України" in text
+    assert "Стаття 1" in text
+    assert "hidden" not in text
 
 
 def test_unsupported_file_returns_none(parser_dir: Path) -> None:
@@ -88,3 +120,42 @@ def _simple_pdf_bytes(text: str) -> bytes:
 
 def _pdf_text_stream(text: str) -> bytes:
     return f"BT /F1 12 Tf 72 72 Td ({text}) Tj ET".encode("ascii")
+
+
+def _write_simple_xlsx(file_path: Path) -> None:
+    with ZipFile(file_path, "w") as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            """
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Default Extension="xml" ContentType="application/xml"/>
+            </Types>
+            """,
+        )
+        archive.writestr(
+            "xl/sharedStrings.xml",
+            """
+            <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <si><t>Назва</t></si>
+              <si><t>Значення</t></si>
+              <si><t>Площа</t></si>
+            </sst>
+            """,
+        )
+        archive.writestr(
+            "xl/worksheets/sheet1.xml",
+            """
+            <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <sheetData>
+                <row r="1">
+                  <c r="A1" t="s"><v>0</v></c>
+                  <c r="B1" t="s"><v>1</v></c>
+                </row>
+                <row r="2">
+                  <c r="A2" t="s"><v>2</v></c>
+                  <c r="B2"><v>120</v></c>
+                </row>
+              </sheetData>
+            </worksheet>
+            """,
+        )

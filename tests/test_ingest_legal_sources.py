@@ -81,17 +81,21 @@ def test_load_manifest_from_csv(source_dir: Path) -> None:
 
 def test_iter_source_files_filters_supported_extensions(source_dir: Path) -> None:
     supported = source_dir / "law.txt"
+    supported_xlsx = source_dir / "registry.xlsx"
+    supported_html = source_dir / "constitution.htm"
     ignored = source_dir / "image.png"
     nested = source_dir / "nested"
     nested.mkdir()
     nested_supported = nested / "code.md"
     supported.write_text("law", encoding="utf-8")
+    supported_xlsx.write_text("xlsx placeholder", encoding="utf-8")
+    supported_html.write_text("<h1>law</h1>", encoding="utf-8")
     ignored.write_text("nope", encoding="utf-8")
     nested_supported.write_text("code", encoding="utf-8")
 
     files = iter_source_files([source_dir])
 
-    assert files == [supported, nested_supported]
+    assert files == [supported_html, supported, nested_supported, supported_xlsx]
 
 
 def test_parse_tags_accepts_lists_and_delimited_strings() -> None:

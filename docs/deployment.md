@@ -76,7 +76,7 @@ The manifest is optional. Supported manifest formats are CSV and JSON. Common fi
 - `topic_tags` or `tags`
 - `summary`
 
-Supported source files are `.pdf`, `.docx`, `.txt`, and `.md`. The script writes both `legal_sources` metadata and workspace-scoped `documents`/`document_chunks`.
+Supported source files are `.pdf`, `.docx`, `.xlsx`, `.html`, `.htm`, `.txt`, and `.md`. The script writes both `legal_sources` metadata and workspace-scoped `documents`/`document_chunks`.
 
 For production legal sources, prepare the manifest before ingestion:
 
@@ -108,6 +108,7 @@ legal_sources/
   constitution/
   codes/
   laws/
+  official_html/
   cabinet/
   executive/
   nerc/
