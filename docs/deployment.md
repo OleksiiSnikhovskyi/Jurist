@@ -72,10 +72,52 @@ The manifest is optional. Supported manifest formats are CSV and JSON. Common fi
 - `adoption_date`
 - `effective_date`
 - `validity_status` or `status`
+- `last_checked_at` or `checked_at`
 - `topic_tags` or `tags`
 - `summary`
 
 Supported source files are `.pdf`, `.docx`, `.txt`, and `.md`. The script writes both `legal_sources` metadata and workspace-scoped `documents`/`document_chunks`.
+
+For production legal sources, prepare the manifest before ingestion:
+
+```bash
+py -3 scripts/prepare_priority_legal_source_manifest.py legal_sources/raw_sources.csv --output legal_sources/priority_manifest.csv
+py -3 scripts/ingest_legal_sources.py legal_sources/ua_laws --manifest legal_sources/priority_manifest.csv
+```
+
+The priority manifest keeps only records that can be tied to official sources and later loaded into PostgreSQL/pgvector. Use this source taxonomy:
+
+- `constitution`: Конституція України.
+- `code`: Кодекси України.
+- `law`: Закони України.
+- `cabinet_resolution`: Постанови Кабінету Міністрів України.
+- `executive_regulation`: нормативні акти центральних органів виконавчої влади.
+- `nerc_decision`: рішення та постанови НКРЕКП.
+- `dbn`: ДБН.
+- `dstu`: ДСТУ.
+- `state_explanation`: роз'яснення державних органів.
+- `supreme_court_position`: огляди та правові позиції Верховного Суду.
+
+Approved official domains are `zakon.rada.gov.ua`, `court.gov.ua`, `supreme.court.gov.ua`, `kmu.gov.ua`, `me.gov.ua`, `minjust.gov.ua`, and `nerc.gov.ua`. Rows from news sites, private legal blogs, forums, unofficial comments, obsolete revisions, or duplicates should be excluded before ingestion. The prepared manifest must contain title, number where applicable, adoption date, current official source URL, last-check date, and thematic tags.
+
+Suggested external storage layout for Google Drive, GitHub, or Nextcloud:
+
+```text
+legal_sources/
+  priority_manifest.csv
+  constitution/
+  codes/
+  laws/
+  cabinet/
+  executive/
+  nerc/
+  dbn/
+  dstu/
+  state_explanations/
+  supreme_court/
+```
+
+Keep source files in the folders above and make each `file_path` in `priority_manifest.csv` relative to `legal_sources/`. See `legal_sources/priority_manifest.example.csv` for the expected columns.
 
 ## Codespaces
 

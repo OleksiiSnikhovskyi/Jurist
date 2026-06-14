@@ -10,6 +10,7 @@ from scripts.ingest_legal_sources import (
     iter_source_files,
     load_manifest,
     parse_date,
+    parse_datetime,
     parse_manifest_entry,
     parse_tags,
 )
@@ -47,9 +48,22 @@ def test_parse_manifest_entry_supports_common_notebook_export_fields() -> None:
         adoption_date=parse_date("2003-01-16"),
         effective_date=None,
         validity_status=None,
+        last_checked_at=None,
         topic_tags=["civil", "code"],
         summary=None,
     )
+
+
+def test_parse_manifest_entry_supports_last_checked_at() -> None:
+    entry = parse_manifest_entry(
+        {
+            "file_path": "laws/constitution.md",
+            "source_name": "Конституція України",
+            "last_checked_at": "2026-06-14",
+        }
+    )
+
+    assert entry.last_checked_at == parse_datetime("2026-06-14")
 
 
 def test_load_manifest_from_csv(source_dir: Path) -> None:

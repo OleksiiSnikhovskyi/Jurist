@@ -1,0 +1,3 @@
+file_path,source_name,source_type,source_url,jurisdiction,document_number,adoption_date,effective_date,validity_status,last_checked_at,topic_tags,summary
+constitution/constitution-ukraine.md,Конституція України,constitution,https://zakon.rada.gov.ua/laws/show/254%D0%BA/96-%D0%B2%D1%80,Ukraine,254к/96-ВР,1996-06-28,,current,2026-06-14,"constitution; public-law","Official Constitution source record."
+codes/civil-code.md,Цивільний кодекс України,code,https://zakon.rada.gov.ua/laws/show/435-15,Ukraine,435-IV,2003-01-16,2004-01-01,current,2026-06-14,"civil-law; code","Official Civil Code source record."

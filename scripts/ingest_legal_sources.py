@@ -6,7 +6,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +44,7 @@ class SourceManifestEntry:
     adoption_date: date | None = None
     effective_date: date | None = None
     validity_status: str | None = None
+    last_checked_at: datetime | None = None
     topic_tags: list[str] = field(default_factory=list)
     summary: str | None = None
 
@@ -192,6 +193,7 @@ def parse_manifest_entry(row: dict[str, Any]) -> SourceManifestEntry:
         adoption_date=parse_date(row.get("adoption_date")),
         effective_date=parse_date(row.get("effective_date")),
         validity_status=_clean_optional(row.get("validity_status") or row.get("status")),
+        last_checked_at=parse_datetime(row.get("last_checked_at") or row.get("checked_at")),
         topic_tags=parse_tags(row.get("topic_tags") or row.get("tags")),
         summary=_clean_optional(row.get("summary")),
     )
@@ -241,7 +243,9 @@ def upsert_legal_source(
     source.validity_status = (
         entry.validity_status if entry and entry.validity_status else default_validity_status
     )
-    source.last_checked_at = datetime.now(timezone.utc)
+    source.last_checked_at = (
+        entry.last_checked_at if entry and entry.last_checked_at else datetime.now(UTC)
+    )
     source.topic_tags = entry.topic_tags if entry and entry.topic_tags else []
     source.summary = entry.summary if entry else None
     source.full_text = text
@@ -315,6 +319,17 @@ def parse_date(value: Any) -> date | None:
         except ValueError:
             continue
     raise ValueError(f"Unsupported date format: {value}")
+
+
+def parse_datetime(value: Any) -> datetime | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    parsed_date = parse_date(value)
+    if not parsed_date:
+        return None
+    return datetime.combine(parsed_date, datetime.min.time(), tzinfo=UTC)
 
 
 def parse_tags(value: Any) -> list[str]:

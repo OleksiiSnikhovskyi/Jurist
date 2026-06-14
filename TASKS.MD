@@ -64,13 +64,15 @@
 
 ## Stage 7: Knowledge Base Expansion
 
-- [ ] Choose production legal source folders, Obsidian vaults, or document sets for ingestion.
+- [x] Choose production legal source folders, Obsidian vaults, or document sets for ingestion.
 - [x] Add legal-source ingestion script for exported NotebookLM/local law corpus files.
+- [x] Add priority legal-source manifest policy for official domains, metadata, deduplication, and source freshness.
 - [x] Ingest selected Markdown/Obsidian materials into the production workspace.
 - [ ] Add PDF/DOCX/XLSX bulk ingestion flow for legal source packs.
 - [ ] Add OCR pipeline for photos and scanned documents.
 - [ ] Add voice transcription pipeline for Telegram voice messages.
-- [ ] Add source freshness metadata for laws, court practice, and regulatory materials.
+- [x] Add source freshness metadata for laws, court practice, and regulatory materials.
+- [ ] Fill the production `priority_manifest.csv` from official source exports and ingest the legal corpus.
 
 ## Stage 8: Telegram User Onboarding
 
