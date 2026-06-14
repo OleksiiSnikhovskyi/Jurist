@@ -93,7 +93,22 @@ The endpoint stores the file in `UPLOAD_DIR`, creates a `documents` record, extr
 
 `POST /n8n/intake/telegram`
 
-Receives normalized Telegram events from `JUR_Bot_Intake_Queue`. If `workspace_id` and `user_id` are provided, the endpoint creates or updates the active pending intake package for the Telegram chat and stores text/file metadata. If the Telegram user is not yet linked to a workspace user, the endpoint returns `ok=false` with a bot-safe reply message.
+Receives normalized Telegram events from `JUR_Bot_Intake_Queue`. If `workspace_id` and `user_id` are provided, or if `telegram_user_id` has an active binding, the endpoint creates or updates the active pending intake package for the Telegram chat and stores text/file metadata. If the Telegram user is not yet linked to a workspace user, the endpoint returns `ok=false` with a bot-safe reply message.
+
+`POST /n8n/telegram/bindings`
+
+Creates or updates the active mapping between a Telegram account and an application workspace user. The target `user_id` must already have `write_documents` permission in the target `workspace_id`.
+
+```json
+{
+  "telegram_user_id": "123456789",
+  "telegram_chat_id": "123456789",
+  "username": "lawyer",
+  "workspace_id": "uuid",
+  "user_id": "uuid",
+  "is_active": true
+}
+```
 
 `POST /n8n/intake/process`
 

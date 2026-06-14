@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -48,3 +48,25 @@ class N8nIntakeItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     package = relationship("N8nIntakePackage", back_populates="items")
+
+
+class N8nTelegramBinding(Base):
+    __tablename__ = "n8n_telegram_bindings"
+    __table_args__ = (
+        UniqueConstraint("telegram_user_id", name="uq_n8n_telegram_binding_user"),
+    )
+
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=new_uuid)
+    telegram_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(255))
+    username: Mapped[str | None] = mapped_column(String(255))
+    workspace_id: Mapped[str] = mapped_column(GUID(), ForeignKey("workspaces.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
+    metadata_json: Mapped[dict | None] = mapped_column("metadata", JSONVariant)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )

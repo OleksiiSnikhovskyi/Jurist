@@ -37,7 +37,7 @@ py -3 -m compileall app tests
 py -3 -m alembic current
 ```
 
-Expected current migration after n8n integration is `20260613_0002`.
+Expected current migration after Telegram binding support is `20260614_0003`.
 
 ## Knowledge Base Seeding
 
@@ -119,6 +119,7 @@ Recommended startup order:
 n8n calls these FastAPI endpoints:
 
 - `POST /n8n/intake/telegram`
+- `POST /n8n/telegram/bindings`
 - `POST /n8n/intake/process`
 - `POST /n8n/obsidian/sync-note`
 

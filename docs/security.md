@@ -35,10 +35,11 @@ Document access must validate both the user's membership and the document's own 
 n8n integration endpoints are implementation endpoints for trusted workflows, not public client APIs. They still enforce workspace access when `workspace_id` and `user_id` are provided:
 
 - `POST /n8n/intake/telegram` requires `write_documents` before storing Telegram materials in a workspace package.
+- `POST /n8n/telegram/bindings` requires `write_documents` for the target workspace user before creating or updating a Telegram binding.
 - `POST /n8n/intake/process` requires `run_agents` before marking a package ready for processing.
 - `POST /n8n/obsidian/sync-note` requires `write_documents` before creating searchable Obsidian documents and chunks.
 
-If a Telegram event has no `workspace_id` or `user_id`, the backend returns a safe response asking for account/workspace binding and does not store private materials. This keeps future client onboarding separate from the technical PostgreSQL role and from Telegram credentials.
+If a Telegram event has no `workspace_id` or `user_id`, the backend first resolves `telegram_user_id` through `n8n_telegram_bindings`. If no active binding exists, it returns a safe response asking for account/workspace binding and does not store private materials. This keeps future client onboarding separate from the technical PostgreSQL role and from Telegram credentials.
 
 Workflow names must start with `JUR_` so they are identifiable in n8n and easier to audit. Checked-in workflow templates are inactive by default and contain placeholder credential IDs. Real Telegram credentials must live in n8n credentials, not in repository JSON or `.env.example`.
 

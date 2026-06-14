@@ -8,6 +8,8 @@ from app.schemas.n8n_schema import (
     N8nObsidianNoteResponse,
     N8nProcessPackageRequest,
     N8nProcessPackageResponse,
+    N8nTelegramBindingRequest,
+    N8nTelegramBindingResponse,
     TelegramIntakeEvent,
 )
 from app.services.access_control import AccessDeniedError
@@ -24,6 +26,17 @@ def handle_telegram_intake(
 ) -> N8nIntakeResponse:
     try:
         return N8nIntegrationService(db).handle_telegram_event(event)
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/telegram/bindings", response_model=N8nTelegramBindingResponse)
+def upsert_telegram_binding(
+    request: N8nTelegramBindingRequest,
+    db: Session = Depends(get_db),
+) -> N8nTelegramBindingResponse:
+    try:
+        return N8nIntegrationService(db).upsert_telegram_binding(request)
     except AccessDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 

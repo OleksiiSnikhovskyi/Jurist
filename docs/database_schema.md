@@ -13,6 +13,7 @@ Initial tables:
 - `audit_logs`
 - `n8n_intake_packages`
 - `n8n_intake_items`
+- `n8n_telegram_bindings`
 
 Run migrations with:
 

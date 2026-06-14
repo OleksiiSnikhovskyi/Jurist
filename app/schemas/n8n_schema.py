@@ -38,6 +38,28 @@ class N8nIntakeResponse(BaseModel):
     reply_text: str
 
 
+class N8nTelegramBindingRequest(BaseModel):
+    telegram_user_id: str
+    telegram_chat_id: str | None = None
+    username: str | None = None
+    workspace_id: str
+    user_id: str
+    is_active: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class N8nTelegramBindingResponse(BaseModel):
+    id: str
+    telegram_user_id: str
+    telegram_chat_id: str | None = None
+    username: str | None = None
+    workspace_id: str
+    user_id: str
+    is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class N8nProcessPackageRequest(BaseModel):
     package_id: str
     workspace_id: str | None = None

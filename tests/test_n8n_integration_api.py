@@ -10,7 +10,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models.audit_log import AuditLog
 from app.models.document import Document, DocumentChunk
-from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage
+from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 
@@ -33,6 +33,7 @@ def db_session() -> Generator[Session, None, None]:
             AuditLog.__table__,
             N8nIntakePackage.__table__,
             N8nIntakeItem.__table__,
+            N8nTelegramBinding.__table__,
         ],
     )
     SessionLocal = sessionmaker(bind=engine)
@@ -117,6 +118,71 @@ def test_telegram_intake_creates_pending_package(
     assert payload["item_count"] == 1
     assert db_session.query(N8nIntakePackage).count() == 1
     assert db_session.query(N8nIntakeItem).count() == 1
+
+
+def test_telegram_binding_allows_intake_without_payload_identity(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+
+    binding_response = client.post(
+        "/n8n/telegram/bindings",
+        json={
+            "telegram_user_id": "200",
+            "telegram_chat_id": "100",
+            "username": "lawyer",
+            "workspace_id": "workspace-1",
+            "user_id": "user-1",
+        },
+    )
+
+    assert binding_response.status_code == 200
+    assert binding_response.json()["is_active"] is True
+
+    response = client.post(
+        "/n8n/intake/telegram",
+        json={
+            "chat_id": "100",
+            "telegram_user_id": "200",
+            "text": "Факти справи",
+            "action": "free_text",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["item_count"] == 1
+    package = db_session.query(N8nIntakePackage).one()
+    assert package.workspace_id == "workspace-1"
+    assert package.user_id == "user-1"
+
+
+def test_inactive_telegram_binding_is_ignored(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    db_session.add(
+        N8nTelegramBinding(
+            telegram_user_id="200",
+            telegram_chat_id="100",
+            workspace_id="workspace-1",
+            user_id="user-1",
+            is_active=False,
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/n8n/intake/telegram",
+        json={"chat_id": "100", "telegram_user_id": "200", "text": "Факти справи"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is False
+    assert db_session.query(N8nIntakePackage).count() == 0
 
 
 def test_start_package_processing_marks_package_requested(

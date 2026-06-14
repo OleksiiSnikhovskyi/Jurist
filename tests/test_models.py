@@ -15,4 +15,5 @@ def test_expected_tables_are_registered() -> None:
         "audit_logs",
         "n8n_intake_packages",
         "n8n_intake_items",
+        "n8n_telegram_bindings",
     }.issubset(Base.metadata.tables.keys())

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage
+from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
 from app.repositories.document_repository import DocumentRepository
 from app.schemas.n8n_schema import (
     N8nIntakeResponse,
@@ -10,6 +10,8 @@ from app.schemas.n8n_schema import (
     N8nObsidianNoteResponse,
     N8nProcessPackageRequest,
     N8nProcessPackageResponse,
+    N8nTelegramBindingRequest,
+    N8nTelegramBindingResponse,
     TelegramIntakeEvent,
 )
 from app.services.access_control import AccessControlService, WorkspacePermission
@@ -42,6 +44,7 @@ class N8nIntegrationService:
         self.audit_log_service = audit_log_service or AuditLogService(db)
 
     def handle_telegram_event(self, event: TelegramIntakeEvent) -> N8nIntakeResponse:
+        event = self._event_with_resolved_identity(event)
         if not event.workspace_id or not event.user_id:
             return N8nIntakeResponse(
                 ok=False,
@@ -103,6 +106,51 @@ class N8nIntegrationService:
             item_count=counts.total,
             reply_text=reply_text,
         )
+
+    def upsert_telegram_binding(
+        self,
+        request: N8nTelegramBindingRequest,
+    ) -> N8nTelegramBindingResponse:
+        self.access_control.require_permission(
+            workspace_id=request.workspace_id,
+            user_id=request.user_id,
+            permission=WorkspacePermission.WRITE_DOCUMENTS,
+        )
+        binding = (
+            self.db.query(N8nTelegramBinding)
+            .filter(N8nTelegramBinding.telegram_user_id == request.telegram_user_id)
+            .one_or_none()
+        )
+        if binding is None:
+            binding = N8nTelegramBinding(telegram_user_id=request.telegram_user_id)
+            self.db.add(binding)
+
+        binding.telegram_chat_id = request.telegram_chat_id
+        binding.username = request.username
+        binding.workspace_id = request.workspace_id
+        binding.user_id = request.user_id
+        binding.is_active = request.is_active
+        binding.metadata_json = request.metadata
+        self.db.flush()
+
+        self.audit_log_service.record(
+            AuditLogCommand(
+                action="n8n.telegram_binding_upserted",
+                user_id=request.user_id,
+                workspace_id=request.workspace_id,
+                object_type="n8n_telegram_binding",
+                object_id=binding.id,
+                metadata={
+                    "telegram_user_id": request.telegram_user_id,
+                    "telegram_chat_id": request.telegram_chat_id,
+                    "is_active": request.is_active,
+                },
+            ),
+            commit=False,
+        )
+        self.db.commit()
+        self.db.refresh(binding)
+        return N8nTelegramBindingResponse.model_validate(binding)
 
     def start_package_processing(
         self,
@@ -230,6 +278,29 @@ class N8nIntegrationService:
         self.db.add(package)
         self.db.flush()
         return package
+
+    def _event_with_resolved_identity(self, event: TelegramIntakeEvent) -> TelegramIntakeEvent:
+        if event.workspace_id and event.user_id:
+            return event
+        if not event.telegram_user_id:
+            return event
+
+        binding = (
+            self.db.query(N8nTelegramBinding)
+            .filter(
+                N8nTelegramBinding.telegram_user_id == event.telegram_user_id,
+                N8nTelegramBinding.is_active.is_(True),
+            )
+            .one_or_none()
+        )
+        if binding is None:
+            return event
+
+        updates = {
+            "workspace_id": event.workspace_id or binding.workspace_id,
+            "user_id": event.user_id or binding.user_id,
+        }
+        return event.model_copy(update=updates)
 
     def _append_event_items(self, package: N8nIntakePackage, event: TelegramIntakeEvent) -> int:
         added_count = 0
