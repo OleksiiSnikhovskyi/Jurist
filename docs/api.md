@@ -137,11 +137,12 @@ If the bound user has no lawyer profile yet, this endpoint asks `Який нап
 
 Telegram client-profile actions:
 
-- `Клієнти`: opens the client-profile submenu and shows the active client if one is selected.
-- `Створити профіль клієнта`: starts a step-by-step client profile dialog.
+- `Клієнти`: opens the client-profile submenu and shows the active client if one is selected. Free text in this menu is ignored until a client action button is chosen.
+- `Новий клієнт` / `Створити профіль клієнта`: starts a step-by-step client profile dialog.
 - `Обрати клієнта`: lists recent workspace client profiles and waits for the exact client name.
 - `Показати активного клієнта`: shows the currently selected client context.
-- `Змінити профіль клієнта`: shows the active client profile and starts an edit dialog for that same profile.
+- `Налаштування клієнта` / `Змінити профіль клієнта`: shows the active client profile and starts an edit dialog for that same profile.
+- `Видалити клієнта`: lists profiles and waits for the exact client name to delete. If the deleted profile was active, the active selection is cleared.
 - `Назад`: returns to the main menu and cancels an incomplete client-profile dialog.
 
 The selected client profile is stored in Telegram binding metadata as `active_client_profile_id`. When the user presses `Почати обробку`, this ID is copied to the intake package metadata as `client_profile_id`.

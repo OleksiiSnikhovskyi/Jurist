@@ -462,8 +462,26 @@ def test_telegram_client_menu_shows_active_client(
     payload = _post_telegram_text(client, "Клієнти", "client_menu")
 
     assert "Підменю клієнтів" in payload["reply_text"]
+    assert payload["reply_menu"] == "client"
     assert "Активний клієнт: ТОВ Актив" in payload["reply_text"]
-    assert "створити нового клієнта" in payload["reply_text"]
+    assert "Оберіть дію кнопкою" in payload["reply_text"]
+
+
+def test_telegram_client_menu_ignores_free_text_until_action_button(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session)
+
+    _post_telegram_text(client, "Клієнти", "client_menu")
+    payload = _post_telegram_text(client, "Створимо нового клієнта")
+
+    assert "Ви у підменю клієнтів" in payload["reply_text"]
+    assert payload["reply_menu"] == "client"
+    assert db_session.query(ClientProfile).count() == 0
+    assert db_session.query(N8nIntakePackage).count() == 0
 
 
 def test_telegram_edit_active_client_profile_updates_existing_profile(
@@ -505,6 +523,34 @@ def test_telegram_edit_active_client_profile_updates_existing_profile(
     assert profile.interests == "Стягнути заборгованість."
     binding = db_session.query(N8nTelegramBinding).one()
     assert binding.metadata_json["active_client_profile_id"] == "client-1"
+
+
+def test_telegram_delete_active_client_profile_clears_selection(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    db_session.add(
+        ClientProfile(
+            id="client-1",
+            workspace_id="workspace-1",
+            created_by="user-1",
+            display_name="ТОВ Видалити",
+        )
+    )
+    _seed_telegram_binding(db_session, metadata={"active_client_profile_id": "client-1"})
+
+    list_payload = _post_telegram_text(client, "Видалити клієнта", "delete_client_profile")
+    assert "ТОВ Видалити" in list_payload["reply_text"]
+
+    done_payload = _post_telegram_text(client, "ТОВ Видалити")
+
+    assert "видалено" in done_payload["reply_text"]
+    assert done_payload["reply_menu"] == "client"
+    assert db_session.query(ClientProfile).count() == 0
+    binding = db_session.query(N8nTelegramBinding).one()
+    assert "active_client_profile_id" not in binding.metadata_json
 
 
 def test_inactive_telegram_binding_is_ignored(

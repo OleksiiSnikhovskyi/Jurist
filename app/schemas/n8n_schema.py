@@ -36,6 +36,7 @@ class N8nIntakeResponse(BaseModel):
     status: str | None = None
     item_count: int = 0
     reply_text: str
+    reply_menu: str = "main"
 
 
 class N8nTelegramBindingRequest(BaseModel):

@@ -283,7 +283,9 @@ class N8nIntegrationService:
             is_client_onboarding = isinstance(
                 onboarding_state,
                 str,
-            ) and onboarding_state.startswith("awaiting_client_")
+            ) and (
+                onboarding_state.startswith("awaiting_client_") or onboarding_state == "client_menu"
+            )
             if is_client_onboarding:
                 metadata.pop("onboarding_state", None)
                 metadata.pop("client_profile_draft", None)
@@ -300,6 +302,11 @@ class N8nIntegrationService:
 
         if event.action == "client_menu":
             profile = self._get_active_client_profile(metadata)
+            metadata["onboarding_state"] = "client_menu"
+            metadata.pop("client_profile_draft", None)
+            metadata.pop("client_profile_edit_id", None)
+            binding.metadata_json = metadata
+            self.db.commit()
             active_text = (
                 f"Активний клієнт: {profile.display_name}"
                 if profile is not None
@@ -307,10 +314,11 @@ class N8nIntegrationService:
             )
             return N8nIntakeResponse(
                 ok=True,
+                reply_menu="client",
                 reply_text=(
                     f"Підменю клієнтів.\n{active_text}\n\n"
-                    "Можете створити нового клієнта, обрати існуючого, переглянути активного "
-                    "або змінити активний профіль."
+                    "Оберіть дію кнопкою: створити, обрати, показати, змінити або видалити "
+                    "профіль клієнта."
                 ),
             )
 
@@ -322,6 +330,7 @@ class N8nIntegrationService:
             self.db.commit()
             return N8nIntakeResponse(
                 ok=True,
+                reply_menu="client",
                 reply_text="Введіть ім'я або назву клієнта.",
             )
 
@@ -330,6 +339,7 @@ class N8nIntegrationService:
             if profile is None:
                 return N8nIntakeResponse(
                     ok=True,
+                    reply_menu="client",
                     reply_text=(
                         "Активний клієнт не обраний. Спочатку натисніть 'Обрати клієнта' "
                         "або створіть новий профіль."
@@ -342,9 +352,34 @@ class N8nIntegrationService:
             self.db.commit()
             return N8nIntakeResponse(
                 ok=True,
+                reply_menu="client",
                 reply_text=(
                     f"Поточний профіль клієнта:\n{self._format_active_client_profile(profile)}\n\n"
                     "Надішліть нове ім'я або назву клієнта."
+                ),
+            )
+
+        if event.action == "delete_client_profile":
+            profiles = self._list_client_profiles(event.workspace_id)
+            if not profiles:
+                return N8nIntakeResponse(
+                    ok=True,
+                    reply_menu="client",
+                    reply_text="Профілі клієнтів ще не створені. Немає що видаляти.",
+                )
+            metadata["onboarding_state"] = "awaiting_client_delete_selection"
+            metadata.pop("client_profile_draft", None)
+            metadata.pop("client_profile_edit_id", None)
+            binding.metadata_json = metadata
+            self.db.commit()
+            names = "\n".join(f"- {profile.display_name}" for profile in profiles[:10])
+            return N8nIntakeResponse(
+                ok=True,
+                reply_menu="client",
+                reply_text=(
+                    "Напишіть точну назву клієнта, якого потрібно видалити:\n"
+                    f"{names}\n\n"
+                    "Щоб скасувати, натисніть 'Назад'."
                 ),
             )
 
@@ -353,6 +388,7 @@ class N8nIntegrationService:
             if not profiles:
                 return N8nIntakeResponse(
                     ok=True,
+                    reply_menu="client",
                     reply_text="Профілі клієнтів ще не створені. Натисніть 'Створити профіль клієнта'.",
                 )
             metadata["onboarding_state"] = "awaiting_client_selection"
@@ -361,13 +397,52 @@ class N8nIntegrationService:
             names = "\n".join(f"- {profile.display_name}" for profile in profiles[:10])
             return N8nIntakeResponse(
                 ok=True,
+                reply_menu="client",
                 reply_text=f"Напишіть назву клієнта зі списку:\n{names}",
+            )
+
+        if onboarding_state == "client_menu" and event.action == "free_text":
+            return N8nIntakeResponse(
+                ok=True,
+                reply_menu="client",
+                reply_text=(
+                    "Ви у підменю клієнтів. Оберіть дію кнопкою: "
+                    "'Створити профіль клієнта', 'Обрати клієнта', "
+                    "'Змінити профіль клієнта' або 'Видалити клієнта'."
+                ),
+            )
+
+        if (
+            onboarding_state == "awaiting_client_delete_selection"
+            and event.action == "free_text"
+            and event.text
+        ):
+            profile = self._find_client_profile_by_name(event.workspace_id, event.text)
+            if profile is None:
+                return N8nIntakeResponse(
+                    ok=True,
+                    reply_menu="client",
+                    reply_text="Не знайшов такого клієнта. Надішліть назву точно зі списку або натисніть 'Назад'.",
+                )
+            active_client_profile_id = metadata.get("active_client_profile_id")
+            if active_client_profile_id == profile.id:
+                metadata.pop("active_client_profile_id", None)
+            metadata.pop("onboarding_state", None)
+            binding.metadata_json = metadata
+            self._record_client_profile_update(event, profile.id, "deleted")
+            self.db.delete(profile)
+            self.db.commit()
+            return N8nIntakeResponse(
+                ok=True,
+                reply_menu="client",
+                reply_text=f"Профіль клієнта '{profile.display_name}' видалено.",
             )
 
         if event.action == "show_active_client_profile":
             profile = self._get_active_client_profile(metadata)
             return N8nIntakeResponse(
                 ok=True,
+                reply_menu="client",
                 reply_text=(
                     self._format_active_client_profile(profile)
                     if profile is not None
@@ -380,6 +455,7 @@ class N8nIntegrationService:
             if profile is None:
                 return N8nIntakeResponse(
                     ok=True,
+                    reply_menu="client",
                     reply_text="Не знайшов такого клієнта. Надішліть назву точно зі списку або створіть новий профіль.",
                 )
             metadata["active_client_profile_id"] = profile.id
@@ -388,6 +464,7 @@ class N8nIntegrationService:
             self.db.commit()
             return N8nIntakeResponse(
                 ok=True,
+                reply_menu="client",
                 reply_text=f"Активний клієнт: {profile.display_name}. Його профіль буде додано до обробки запитів.",
             )
 
@@ -397,7 +474,11 @@ class N8nIntegrationService:
             metadata["onboarding_state"] = "awaiting_client_matter_role"
             binding.metadata_json = metadata
             self.db.commit()
-            return N8nIntakeResponse(ok=True, reply_text="Яка роль клієнта у справі?")
+            return N8nIntakeResponse(
+                ok=True,
+                reply_menu="client",
+                reply_text="Яка роль клієнта у справі?",
+            )
 
         if onboarding_state == "awaiting_client_matter_role" and event.action == "free_text" and event.text:
             draft["matter_role"] = event.text.strip()
@@ -405,7 +486,11 @@ class N8nIntegrationService:
             metadata["onboarding_state"] = "awaiting_client_interests"
             binding.metadata_json = metadata
             self.db.commit()
-            return N8nIntakeResponse(ok=True, reply_text="Які інтереси клієнта потрібно відстоювати?")
+            return N8nIntakeResponse(
+                ok=True,
+                reply_menu="client",
+                reply_text="Які інтереси клієнта потрібно відстоювати?",
+            )
 
         if onboarding_state == "awaiting_client_interests" and event.action == "free_text" and event.text:
             draft["interests"] = event.text.strip()
@@ -415,6 +500,7 @@ class N8nIntegrationService:
             self.db.commit()
             return N8nIntakeResponse(
                 ok=True,
+                reply_menu="client",
                 reply_text="Які ризикові побажання клієнта? Наприклад: обережна позиція, швидке врегулювання, готовність до суду.",
             )
 
@@ -424,7 +510,11 @@ class N8nIntegrationService:
             metadata["onboarding_state"] = "awaiting_client_communication_preferences"
             binding.metadata_json = metadata
             self.db.commit()
-            return N8nIntakeResponse(ok=True, reply_text="Який стиль комунікації/відповіді бажаний для цього клієнта?")
+            return N8nIntakeResponse(
+                ok=True,
+                reply_menu="client",
+                reply_text="Який стиль комунікації/відповіді бажаний для цього клієнта?",
+            )
 
         if (
             onboarding_state == "awaiting_client_communication_preferences"
@@ -456,6 +546,7 @@ class N8nIntegrationService:
             )
             return N8nIntakeResponse(
                 ok=True,
+                reply_menu="client",
                 reply_text=(
                     f"Профіль клієнта '{profile.display_name}' {action_text}. "
                     "Його контекст буде додано до обробки запитів."
@@ -571,6 +662,7 @@ class N8nIntegrationService:
         if isinstance(onboarding_state, str) and onboarding_state.startswith("awaiting_client_"):
             metadata.pop("onboarding_state", None)
             metadata.pop("client_profile_draft", None)
+            metadata.pop("client_profile_edit_id", None)
             binding.metadata_json = metadata
 
     def _record_client_profile_update(
