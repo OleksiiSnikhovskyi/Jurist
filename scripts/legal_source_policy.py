@@ -34,9 +34,11 @@ CURRENT_VALIDITY_STATUSES: frozenset[str] = frozenset(
     {
         "current",
         "active",
+        "pending_effective",
         "чинний",
         "чинна",
         "актуальна",
+        "набирає чинності",
     }
 )
 

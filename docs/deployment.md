@@ -85,6 +85,17 @@ py -3 scripts/prepare_priority_legal_source_manifest.py legal_sources/raw_source
 py -3 scripts/ingest_legal_sources.py legal_sources/ua_laws --manifest legal_sources/priority_manifest.csv
 ```
 
+For Ukrainian legislation, use the official Verkhovna Rada portal as the canonical source. The full legislation catalog is `https://zakon.rada.gov.ua/laws`; the daily newest arrivals list is `https://zakon.rada.gov.ua/laws/main/nn`.
+
+To turn the daily arrivals page or a saved HTML export into manifest rows:
+
+```bash
+py -3 scripts/rada_catalog_sync.py --input https://zakon.rada.gov.ua/laws/main/nn --output legal_sources/rada_daily_manifest.csv
+py -3 scripts/prepare_priority_legal_source_manifest.py legal_sources/rada_daily_manifest.csv --output legal_sources/priority_manifest.csv
+```
+
+When running without direct internet access, save the Rada page as HTML and pass the local file path to `--input`.
+
 The priority manifest keeps only records that can be tied to official sources and later loaded into PostgreSQL/pgvector. Use this source taxonomy:
 
 - `constitution`: Конституція України.
