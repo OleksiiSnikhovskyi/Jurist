@@ -84,6 +84,7 @@
 - [x] Include `client_profile_id` in agent/package processing requests.
 - [x] Add Telegram client-profile onboarding and active client selection.
 - [x] Attach active Telegram client profile to packages on `Почати обробку`.
+- [x] Add Telegram client-profile submenu for selecting and editing active clients.
 - [ ] Design full Telegram-to-user/workspace binding flow.
 - [x] Add backend model or mapping for Telegram users and workspace access.
 - [x] Apply Telegram binding migration on the server.

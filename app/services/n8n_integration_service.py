@@ -279,14 +279,73 @@ class N8nIntegrationService:
         onboarding_state = metadata.get("onboarding_state")
         draft = dict(metadata.get("client_profile_draft") or {})
 
-        if event.action in {"create_client_profile", "edit_client_profile"}:
+        if event.action == "main_menu":
+            is_client_onboarding = isinstance(
+                onboarding_state,
+                str,
+            ) and onboarding_state.startswith("awaiting_client_")
+            if is_client_onboarding:
+                metadata.pop("onboarding_state", None)
+                metadata.pop("client_profile_draft", None)
+                metadata.pop("client_profile_edit_id", None)
+                binding.metadata_json = metadata
+                self.db.commit()
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text=(
+                    "Головне меню. Можете додати матеріали, обрати клієнта "
+                    "або почати обробку."
+                ),
+            )
+
+        if event.action == "client_menu":
+            profile = self._get_active_client_profile(metadata)
+            active_text = (
+                f"Активний клієнт: {profile.display_name}"
+                if profile is not None
+                else "Активний клієнт не обраний."
+            )
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text=(
+                    f"Підменю клієнтів.\n{active_text}\n\n"
+                    "Можете створити нового клієнта, обрати існуючого, переглянути активного "
+                    "або змінити активний профіль."
+                ),
+            )
+
+        if event.action == "create_client_profile":
             metadata["onboarding_state"] = "awaiting_client_display_name"
             metadata["client_profile_draft"] = {}
+            metadata.pop("client_profile_edit_id", None)
             binding.metadata_json = metadata
             self.db.commit()
             return N8nIntakeResponse(
                 ok=True,
                 reply_text="Введіть ім'я або назву клієнта.",
+            )
+
+        if event.action == "edit_client_profile":
+            profile = self._get_active_client_profile(metadata)
+            if profile is None:
+                return N8nIntakeResponse(
+                    ok=True,
+                    reply_text=(
+                        "Активний клієнт не обраний. Спочатку натисніть 'Обрати клієнта' "
+                        "або створіть новий профіль."
+                    ),
+                )
+            metadata["onboarding_state"] = "awaiting_client_display_name"
+            metadata["client_profile_draft"] = {}
+            metadata["client_profile_edit_id"] = profile.id
+            binding.metadata_json = metadata
+            self.db.commit()
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text=(
+                    f"Поточний профіль клієнта:\n{self._format_active_client_profile(profile)}\n\n"
+                    "Надішліть нове ім'я або назву клієнта."
+                ),
             )
 
         if event.action == "select_client_profile":
@@ -373,17 +432,32 @@ class N8nIntegrationService:
             and event.text
         ):
             draft["communication_preferences"] = event.text.strip()
-            profile = self._create_client_profile_from_draft(event, draft)
+            edit_profile_id = metadata.get("client_profile_edit_id")
+            profile = (
+                self._update_client_profile_from_draft(event, edit_profile_id, draft)
+                if edit_profile_id
+                else self._create_client_profile_from_draft(event, draft)
+            )
             metadata["active_client_profile_id"] = profile.id
             metadata.pop("onboarding_state", None)
             metadata.pop("client_profile_draft", None)
+            metadata.pop("client_profile_edit_id", None)
             binding.metadata_json = metadata
-            self._record_client_profile_update(event, profile.id, "created")
+            self._record_client_profile_update(
+                event,
+                profile.id,
+                "updated" if edit_profile_id else "created",
+            )
             self.db.commit()
+            action_text = (
+                "оновлено і залишено активним"
+                if edit_profile_id
+                else "створено і зроблено активним"
+            )
             return N8nIntakeResponse(
                 ok=True,
                 reply_text=(
-                    f"Профіль клієнта '{profile.display_name}' створено і зроблено активним. "
+                    f"Профіль клієнта '{profile.display_name}' {action_text}. "
                     "Його контекст буде додано до обробки запитів."
                 ),
             )
@@ -406,6 +480,28 @@ class N8nIntegrationService:
             extra_context={"source": "telegram_onboarding"},
         )
         self.db.add(profile)
+        self.db.flush()
+        return profile
+
+    def _update_client_profile_from_draft(
+        self,
+        event: TelegramIntakeEvent,
+        profile_id: str,
+        draft: dict,
+    ) -> ClientProfile:
+        profile = self.db.get(ClientProfile, profile_id)
+        if profile is None or profile.workspace_id != event.workspace_id:
+            return self._create_client_profile_from_draft(event, draft)
+        profile.display_name = draft.get("display_name") or profile.display_name
+        profile.matter_role = draft.get("matter_role")
+        profile.interests = draft.get("interests")
+        profile.risk_preferences = draft.get("risk_preferences")
+        profile.communication_preferences = draft.get("communication_preferences")
+        profile.extra_context = {
+            **(profile.extra_context or {}),
+            "source": "telegram_onboarding",
+            "last_telegram_update": "profile_edit",
+        }
         self.db.flush()
         return profile
 

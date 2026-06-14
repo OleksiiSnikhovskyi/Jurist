@@ -443,6 +443,70 @@ def test_telegram_select_client_profile_by_name(
     assert binding.metadata_json["active_client_profile_id"] == "client-1"
 
 
+def test_telegram_client_menu_shows_active_client(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    db_session.add(
+        ClientProfile(
+            id="client-1",
+            workspace_id="workspace-1",
+            created_by="user-1",
+            display_name="ТОВ Актив",
+        )
+    )
+    _seed_telegram_binding(db_session, metadata={"active_client_profile_id": "client-1"})
+
+    payload = _post_telegram_text(client, "Клієнти", "client_menu")
+
+    assert "Підменю клієнтів" in payload["reply_text"]
+    assert "Активний клієнт: ТОВ Актив" in payload["reply_text"]
+    assert "створити нового клієнта" in payload["reply_text"]
+
+
+def test_telegram_edit_active_client_profile_updates_existing_profile(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    db_session.add(
+        ClientProfile(
+            id="client-1",
+            workspace_id="workspace-1",
+            created_by="user-1",
+            display_name="ТОВ Старий",
+            matter_role="відповідач",
+            interests="Зменшити суму вимог.",
+        )
+    )
+    _seed_telegram_binding(db_session, metadata={"active_client_profile_id": "client-1"})
+
+    start_payload = _post_telegram_text(client, "Змінити профіль клієнта", "edit_client_profile")
+    assert "Поточний профіль клієнта" in start_payload["reply_text"]
+    assert "ТОВ Старий" in start_payload["reply_text"]
+
+    assert "роль клієнта" in _post_telegram_text(client, "ТОВ Новий")["reply_text"]
+    assert "інтереси клієнта" in _post_telegram_text(client, "позивач")["reply_text"]
+    assert "ризикові побажання" in _post_telegram_text(client, "Стягнути заборгованість.")[
+        "reply_text"
+    ]
+    assert "стиль комунікації" in _post_telegram_text(client, "Готовність до суду.")["reply_text"]
+    done_payload = _post_telegram_text(client, "Детальний аналіз з ризиками.")
+
+    assert "оновлено і залишено активним" in done_payload["reply_text"]
+    assert db_session.query(ClientProfile).count() == 1
+    profile = db_session.get(ClientProfile, "client-1")
+    assert profile is not None
+    assert profile.display_name == "ТОВ Новий"
+    assert profile.matter_role == "позивач"
+    assert profile.interests == "Стягнути заборгованість."
+    binding = db_session.query(N8nTelegramBinding).one()
+    assert binding.metadata_json["active_client_profile_id"] == "client-1"
+
+
 def test_inactive_telegram_binding_is_ignored(
     client: TestClient,
     db_session: Session,
