@@ -7,6 +7,7 @@ from app.agents.orchestrator import LegalPlatformOrchestrator
 from app.agents.quality_control import QualityControlAgent
 from app.database import get_db
 from app.schemas.agent_schema import AgentQueryRequest, AgentQueryResponse
+from app.services.agent_context_service import ClientProfileNotFoundError
 from app.services.access_control import AccessDeniedError
 from app.services.document_access_service import DocumentNotFoundError
 
@@ -26,6 +27,8 @@ def query_contract_review(
 ) -> AgentQueryResponse:
     try:
         return ContractReviewAgent(db).review(request)
+    except ClientProfileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AccessDeniedError as exc:
@@ -39,6 +42,8 @@ def query_legal_research(
 ) -> AgentQueryResponse:
     try:
         return LegalResearchAgent(db).research(request)
+    except ClientProfileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AccessDeniedError as exc:
@@ -52,6 +57,8 @@ def query_quality_control(
 ) -> AgentQueryResponse:
     try:
         return QualityControlAgent(db).review(request)
+    except ClientProfileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AccessDeniedError as exc:

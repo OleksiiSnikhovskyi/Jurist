@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.schemas.agent_schema import AgentQueryRequest, AgentQueryResponse, AgentWarning
-from app.services.access_control import AccessDeniedError
+from app.services.agent_context_service import AgentContextService, ClientContext
 from app.services.document_access_service import DocumentAccessService
 from app.services.vector_search_service import VectorSearchCommand, VectorSearchResult, VectorSearchService
 
@@ -39,10 +39,12 @@ class ContractReviewAgent:
         db: Session,
         vector_search_service: VectorSearchService | None = None,
         document_access_service: DocumentAccessService | None = None,
+        agent_context_service: AgentContextService | None = None,
     ) -> None:
         self.db = db
         self.vector_search_service = vector_search_service or VectorSearchService(db)
         self.document_access_service = document_access_service or DocumentAccessService(db)
+        self.agent_context_service = agent_context_service or AgentContextService(db)
 
     def review(self, request: AgentQueryRequest) -> AgentQueryResponse:
         if request.document_id:
@@ -52,16 +54,22 @@ class ContractReviewAgent:
                 user_id=request.user_id,
             )
 
+        client_context = self.agent_context_service.load_client_context(
+            client_profile_id=request.client_profile_id,
+            workspace_id=request.workspace_id,
+            user_id=request.user_id,
+        )
+        query = with_client_context(request.question, client_context)
         results = self.vector_search_service.search(
             VectorSearchCommand(
                 workspace_id=request.workspace_id,
                 user_id=request.user_id,
-                query=f"{request.question} {CONTRACT_REVIEW_QUERY}",
+                query=f"{query} {CONTRACT_REVIEW_QUERY}",
                 limit=8,
             )
         )
         findings = detect_contract_findings(results)
-        answer = build_contract_review_answer(findings, results)
+        answer = build_contract_review_answer(findings, results, client_context)
         return AgentQueryResponse(
             answer=answer,
             sources_used=[source_from_result(result) for result in results],
@@ -106,6 +114,7 @@ def detect_contract_findings(results: list[VectorSearchResult]) -> list[Contract
 def build_contract_review_answer(
     findings: list[ContractReviewFinding],
     results: list[VectorSearchResult],
+    client_context: ClientContext | None = None,
 ) -> str:
     critical_risks = [finding for finding in findings if finding.severity == "critical"]
     medium_risks = [finding for finding in findings if finding.severity == "medium"]
@@ -118,6 +127,9 @@ def build_contract_review_answer(
         [
             "1. Загальний висновок.",
             "Попередній аналіз виконано за знайденими фрагментами договору в межах поточного workspace.",
+            "",
+            "1.1. Контекст клієнта.",
+            client_context.text if client_context else "- Профіль клієнта не передано.",
             "",
             "2. Критичні ризики.",
             _format_findings(critical_risks) if critical_risks else "- Критичних ризиків автоматично не виявлено.",
@@ -142,6 +154,12 @@ def build_contract_review_answer(
             "\n".join(source_lines) if source_lines else "- Немає релевантних фрагментів.",
         ]
     )
+
+
+def with_client_context(question: str, client_context: ClientContext | None) -> str:
+    if client_context is None:
+        return question
+    return f"{question}\n\nКонтекст клієнта:\n{client_context.text}"
 
 
 def source_from_result(result: VectorSearchResult) -> dict:

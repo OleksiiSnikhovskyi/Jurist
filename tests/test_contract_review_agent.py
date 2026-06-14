@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.agents.contract_review import ContractReviewAgent, detect_contract_findings
 from app.database import get_db
 from app.main import app
+from app.models.client_profile import ClientProfile
 from app.models.document import Document, DocumentChunk
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -17,7 +18,11 @@ from app.services.vector_search_service import VectorSearchCommand, VectorSearch
 
 
 class FakeVectorSearchService:
+    def __init__(self) -> None:
+        self.last_query: str | None = None
+
     def search(self, command: VectorSearchCommand) -> list[VectorSearchResult]:
+        self.last_query = command.query
         return [
             VectorSearchResult(
                 chunk_id="chunk-1",
@@ -45,6 +50,7 @@ def db_session() -> Generator[Session, None, None]:
     User.__table__.create(engine)
     Workspace.__table__.create(engine)
     WorkspaceMember.__table__.create(engine)
+    ClientProfile.__table__.create(engine)
     Document.__table__.create(engine)
     DocumentChunk.__table__.create(engine)
     SessionLocal = sessionmaker(bind=engine)
@@ -82,6 +88,20 @@ def _seed_review_case(db: Session) -> None:
             workspace_id="workspace-1",
             chunk_index=0,
             chunk_text="Оплата договору та пеня за прострочення.",
+        )
+    )
+    db.commit()
+
+
+def _seed_client_profile(db: Session) -> None:
+    db.add(
+        ClientProfile(
+            id="client-1",
+            workspace_id="workspace-1",
+            created_by="user-1",
+            display_name="ТОВ Клієнт",
+            matter_role="постачальник",
+            interests="Отримати оплату без руйнування партнерських відносин.",
         )
     )
     db.commit()
@@ -130,6 +150,30 @@ def test_contract_review_agent_returns_sources_and_warnings(db_session: Session)
         "law_freshness_not_checked",
     }
     assert response.confidence_score == 0.75
+
+
+def test_contract_review_agent_includes_client_profile_context(db_session: Session) -> None:
+    _seed_review_case(db_session)
+    _seed_client_profile(db_session)
+    search = FakeVectorSearchService()
+
+    response = ContractReviewAgent(
+        db_session,
+        vector_search_service=search,
+    ).review(
+        AgentQueryRequest(
+            user_id="user-1",
+            workspace_id="workspace-1",
+            document_id="document-1",
+            client_profile_id="client-1",
+            question="Перевір договір",
+        )
+    )
+
+    assert "Контекст клієнта" in response.answer
+    assert "ТОВ Клієнт" in response.answer
+    assert search.last_query is not None
+    assert "ТОВ Клієнт" in search.last_query
 
 
 def test_contract_review_agent_handles_empty_context(db_session: Session) -> None:

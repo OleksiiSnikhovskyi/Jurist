@@ -5,6 +5,7 @@ from app.database import Base
 def test_expected_tables_are_registered() -> None:
     assert {
         "users",
+        "client_profiles",
         "workspaces",
         "workspace_members",
         "lawyer_profiles",

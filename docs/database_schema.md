@@ -3,6 +3,7 @@
 Initial tables:
 
 - `users`
+- `client_profiles`
 - `workspaces`
 - `workspace_members`
 - `lawyer_profiles`

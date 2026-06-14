@@ -64,6 +64,7 @@ class N8nProcessPackageRequest(BaseModel):
     package_id: str
     workspace_id: str | None = None
     user_id: str | None = None
+    client_profile_id: str | None = None
     requested_agent: str = "orchestrator"
     question: str = "Опрацюй завантажені матеріали та підготуй юридичну відповідь."
 

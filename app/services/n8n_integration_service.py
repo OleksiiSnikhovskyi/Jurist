@@ -189,6 +189,10 @@ class N8nIntegrationService:
         package.status = "processing_requested"
         package.requested_agent = request.requested_agent
         package.question = request.question
+        metadata = dict(package.metadata_json or {})
+        if request.client_profile_id:
+            metadata["client_profile_id"] = request.client_profile_id
+        package.metadata_json = metadata
         self.audit_log_service.record(
             AuditLogCommand(
                 action="n8n.package_processing_requested",
@@ -196,7 +200,10 @@ class N8nIntegrationService:
                 workspace_id=workspace_id,
                 object_type="n8n_intake_package",
                 object_id=package.id,
-                metadata={"requested_agent": request.requested_agent},
+                metadata={
+                    "requested_agent": request.requested_agent,
+                    "client_profile_id": request.client_profile_id,
+                },
             ),
             commit=False,
         )

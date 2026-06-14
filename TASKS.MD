@@ -76,6 +76,8 @@
 
 - [x] Require lawyer activity direction during Telegram onboarding.
 - [x] Allow Telegram users to update their personal system prompt.
+- [x] Add workspace-scoped client profiles for processing context.
+- [x] Include `client_profile_id` in agent/package processing requests.
 - [ ] Design full Telegram-to-user/workspace binding flow.
 - [x] Add backend model or mapping for Telegram users and workspace access.
 - [x] Apply Telegram binding migration on the server.

@@ -17,7 +17,8 @@ Initial request shape:
   "user_id": "uuid",
   "workspace_id": "uuid",
   "question": "Analyze this contract",
-  "document_id": "optional uuid"
+  "document_id": "optional uuid",
+  "client_profile_id": "optional uuid"
 }
 ```
 
@@ -74,6 +75,42 @@ Updates any subset of profile fields.
 
 Deletes a lawyer profile.
 
+## Client Profiles
+
+`POST /client-profiles`
+
+Creates a workspace-scoped client profile. This profile represents the client, their role in the matter, interests, risk preferences, communication preferences, and factual context.
+
+```json
+{
+  "workspace_id": "uuid",
+  "created_by": "uuid",
+  "display_name": "ТОВ Приклад",
+  "client_type": "business",
+  "matter_role": "позивач",
+  "interests": "Стягнути заборгованість і зберегти договірні відносини",
+  "risk_preferences": "Уникати надмірно агресивної позиції",
+  "communication_preferences": "Стислий executive summary",
+  "factual_context": "Постачання виконано, оплата прострочена"
+}
+```
+
+`GET /client-profiles/by-workspace/{workspace_id}?user_id={user_id}`
+
+Lists client profiles visible to a workspace member.
+
+`GET /client-profiles/{profile_id}?user_id={user_id}`
+
+Returns one client profile after workspace access validation.
+
+`PATCH /client-profiles/{profile_id}?user_id={user_id}`
+
+Updates any subset of client profile fields.
+
+`DELETE /client-profiles/{profile_id}?user_id={user_id}`
+
+Deletes a client profile. Agent requests can include `client_profile_id`; the selected profile is then added to retrieval context and to the generated answer.
+
 ## Documents
 
 `POST /documents/upload`
@@ -116,6 +153,7 @@ Creates or updates the active mapping between a Telegram account and an applicat
 `POST /n8n/intake/process`
 
 Starts explicit package processing after the user presses `Почати обробку`. The endpoint marks the package as `processing_requested` and records the requested agent/question for the next processing step.
+It can also store `client_profile_id` in the package metadata so the downstream processing step can include the client context in agent requests.
 
 `POST /n8n/obsidian/sync-note`
 

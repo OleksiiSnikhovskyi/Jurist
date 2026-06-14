@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.schemas.agent_schema import AgentQueryRequest, AgentQueryResponse, AgentWarning
+from app.services.agent_context_service import AgentContextService, ClientContext
 from app.services.document_access_service import DocumentAccessService
 from app.services.vector_search_service import VectorSearchCommand, VectorSearchResult, VectorSearchService
 
@@ -54,10 +55,12 @@ class QualityControlAgent:
         db: Session,
         vector_search_service: VectorSearchService | None = None,
         document_access_service: DocumentAccessService | None = None,
+        agent_context_service: AgentContextService | None = None,
     ) -> None:
         self.db = db
         self.vector_search_service = vector_search_service or VectorSearchService(db)
         self.document_access_service = document_access_service or DocumentAccessService(db)
+        self.agent_context_service = agent_context_service or AgentContextService(db)
 
     def review(self, request: AgentQueryRequest) -> AgentQueryResponse:
         if request.document_id:
@@ -67,16 +70,22 @@ class QualityControlAgent:
                 user_id=request.user_id,
             )
 
+        client_context = self.agent_context_service.load_client_context(
+            client_profile_id=request.client_profile_id,
+            workspace_id=request.workspace_id,
+            user_id=request.user_id,
+        )
+        draft_with_context = with_client_context(request.question, client_context)
         results = self.vector_search_service.search(
             VectorSearchCommand(
                 workspace_id=request.workspace_id,
                 user_id=request.user_id,
-                query=f"{request.question} {QUALITY_CONTROL_QUERY}",
+                query=f"{draft_with_context} {QUALITY_CONTROL_QUERY}",
                 limit=8,
             )
         )
         findings = detect_quality_control_findings(request.question, results)
-        answer = build_quality_control_answer(findings, results)
+        answer = build_quality_control_answer(findings, results, client_context)
         return AgentQueryResponse(
             answer=answer,
             sources_used=[source_from_result(result) for result in results],
@@ -144,6 +153,7 @@ def detect_quality_control_findings(
 def build_quality_control_answer(
     findings: list[QualityControlFinding],
     results: list[VectorSearchResult],
+    client_context: ClientContext | None = None,
 ) -> str:
     high = [finding for finding in findings if finding.severity == "high"]
     medium = [finding for finding in findings if finding.severity == "medium"]
@@ -156,6 +166,9 @@ def build_quality_control_answer(
         [
             "1. Quality Control висновок.",
             _readiness_line(findings),
+            "",
+            "1.1. Контекст клієнта.",
+            client_context.text if client_context else "- Профіль клієнта не передано.",
             "",
             "2. Блокуючі зауваження.",
             _format_findings(high) if high else "- Блокуючих зауважень автоматично не виявлено.",
@@ -173,6 +186,12 @@ def build_quality_control_answer(
             "\n".join(source_lines) if source_lines else "- Немає релевантних фрагментів.",
         ]
     )
+
+
+def with_client_context(question: str, client_context: ClientContext | None) -> str:
+    if client_context is None:
+        return question
+    return f"{question}\n\nКонтекст клієнта:\n{client_context.text}"
 
 
 def source_from_result(result: VectorSearchResult) -> dict:

@@ -6,6 +6,7 @@ class AgentQueryRequest(BaseModel):
     workspace_id: str
     question: str = Field(min_length=1)
     document_id: str | None = None
+    client_profile_id: str | None = None
 
 
 class AgentWarning(BaseModel):
@@ -18,4 +19,3 @@ class AgentQueryResponse(BaseModel):
     sources_used: list[dict] = Field(default_factory=list)
     warnings: list[AgentWarning] = Field(default_factory=list)
     confidence_score: float | None = None
-

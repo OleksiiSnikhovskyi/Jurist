@@ -22,6 +22,8 @@ Workspace membership is stored in `workspace_members`. The application recognize
 
 All private document access, vector search, legal opinions, and future n8n workflows must check workspace membership before reading or writing workspace-scoped data.
 
+Client profiles are also workspace-scoped private context. Agents may use a `client_profile_id` only when the profile belongs to the requested `workspace_id` and the requesting user has workspace read permission. A client profile from another workspace must never be added to retrieval queries or generated answers.
+
 ## Audit Logging
 
 Access-sensitive actions are written to `audit_logs` through `AuditLogService`. Audit metadata is intentionally limited: keys such as `document_text`, `full_text`, `prompt`, `system_prompt`, and `raw_text` are removed, and long strings are truncated. Store identifiers, source names, risk flags, and operational context in audit metadata, not confidential document bodies.
