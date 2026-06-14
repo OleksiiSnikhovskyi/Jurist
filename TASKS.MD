@@ -80,7 +80,7 @@
 - [x] Add backend model or mapping for Telegram users and workspace access.
 - [x] Apply Telegram binding migration on the server.
 - [x] Create first real Telegram binding for the production workspace.
-- [ ] Deploy updated Telegram profile prompt buttons to the active n8n workflow.
+- [x] Deploy updated Telegram profile prompt buttons to the active n8n workflow.
 - [ ] Add bot commands for choosing workspace/case.
 - [ ] Add package review UX before `Почати обробку`.
 - [ ] Add delete-one-material and cancel-processing behavior end to end.
