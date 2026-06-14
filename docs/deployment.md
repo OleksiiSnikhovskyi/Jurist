@@ -104,6 +104,7 @@ py -3 scripts/ingest_legal_sources.py legal_sources/official_html/rada --manifes
 ```
 
 The downloader writes files using manifest-relative paths such as `legal_sources/official_html/rada/4777-20.html`. Existing files are skipped unless `--overwrite` is passed.
+Daily Rada sync skips rows that fail priority-manifest validation and still writes valid rows. Add `--strict` when running an audit job that should fail on any invalid or incomplete source row.
 
 The priority manifest keeps only records that can be tied to official sources and later loaded into PostgreSQL/pgvector. Use this source taxonomy:
 

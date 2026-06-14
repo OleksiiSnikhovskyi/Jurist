@@ -10,6 +10,7 @@ from scripts.prepare_priority_legal_source_manifest import prepare_manifest_rows
 from scripts.rada_catalog_sync import (
     _decode_response_body,
     download_manifest_documents,
+    main,
     parse_rada_arrivals_html,
 )
 
@@ -104,3 +105,46 @@ def test_decode_response_body_supports_gzip() -> None:
     raw = gzip.compress("Найновіші надходження".encode())
 
     assert _decode_response_body(raw, "gzip") == "Найновіші надходження"
+
+
+def test_rada_sync_cli_does_not_fail_non_strict_on_partial_issues(
+    monkeypatch: pytest.MonkeyPatch,
+    sync_dir: Path,
+) -> None:
+    html_path = sync_dir / "arrivals.html"
+    output_path = sync_dir / "manifest.csv"
+    html_path.write_text(
+        """
+        <ol>
+          <li>
+            <a href="/laws/show/4777-20">Про внесення змін до Закону України</a>
+            Верховна Рада України; Закон від 10.02.2026 № 4777-IX
+            4777-IX, Чинний
+          </li>
+          <li>
+            <a href="/laws/show/no-number">Про документ без номера</a>
+            Верховна Рада України; Закон від 10.02.2026
+            Чинний
+          </li>
+        </ol>
+        """,
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "rada_catalog_sync.py",
+            "--input",
+            str(html_path),
+            "--output",
+            str(output_path),
+            "--today",
+            "2026-06-14",
+        ],
+    )
+
+    main()
+
+    manifest = output_path.read_text(encoding="utf-8")
+    assert "4777-IX" in manifest
+    assert "no-number" not in manifest

@@ -76,6 +76,11 @@ def main() -> None:
         help="Last-check date for manifest rows.",
     )
     parser.add_argument("--allow-issues", action="store_true")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit with an error when any source row has validation issues.",
+    )
     args = parser.parse_args()
 
     html = read_input(args.input)
@@ -105,7 +110,7 @@ def main() -> None:
     )
     for issue in issues:
         print(f"{issue['row']}: {issue['field']}: {issue['message']}")
-    if issues and not args.allow_issues:
+    if issues and args.strict and not args.allow_issues:
         raise SystemExit(1)
 
 
