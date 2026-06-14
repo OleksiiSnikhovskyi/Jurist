@@ -40,6 +40,7 @@ Runs a workspace-scoped quality control pass over a draft answer or legal opinio
 `POST /lawyer-profiles`
 
 Creates a personal lawyer profile for an existing `users.id`. Each user can have one profile.
+Telegram onboarding also relies on this profile: after Telegram binding, the bot asks `Який напрямок Вашої діяльності?` before collecting work materials if the bound user has no profile yet. The profile can later be updated through `PATCH /lawyer-profiles/{profile_id}` or through the Telegram action `Змінити системний промпт`.
 
 ```json
 {
@@ -94,6 +95,8 @@ The endpoint stores the file in `UPLOAD_DIR`, creates a `documents` record, extr
 `POST /n8n/intake/telegram`
 
 Receives normalized Telegram events from `JUR_Bot_Intake_Queue`. If `workspace_id` and `user_id` are provided, or if `telegram_user_id` has an active binding, the endpoint creates or updates the active pending intake package for the Telegram chat and stores text/file metadata. If the Telegram user is not yet linked to a workspace user, the endpoint returns `ok=false` with a bot-safe reply message.
+
+If the bound user has no lawyer profile yet, this endpoint asks `Який напрямок Вашої діяльності?` and stores the next free-text answer as the first profile/system-prompt basis instead of adding it to a document package. The `Змінити системний промпт` bot action lets the user replace the profile prompt later.
 
 `POST /n8n/telegram/bindings`
 

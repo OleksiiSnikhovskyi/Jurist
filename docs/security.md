@@ -47,6 +47,8 @@ Workflow names must start with `JUR_` so they are identifiable in n8n and easier
 
 Telegram file IDs, filenames, MIME types, message IDs, and chat/user IDs are stored as operational metadata in `n8n_intake_items`. Raw binary files, OCR output, and voice transcripts should be stored only through controlled ingestion steps and should remain workspace-scoped. The system must not start OCR, transcription, indexing, or legal analysis until the user explicitly chooses `Почати обробку`.
 
+After Telegram binding, a lawyer profile is required before materials are collected. If no profile exists, the bot asks `Який напрямок Вашої діяльності?` and stores the answer as the initial profile context. The user must always be able to replace their system prompt later; the Telegram action `Змінити системний промпт` updates only the profile prompt and does not add that text as case material.
+
 ## Obsidian Vault Security
 
 Obsidian notes are treated as private workspace knowledge. Sync only explicitly configured notes or folders, preserve source paths as metadata, and never index an entire vault automatically unless the lawyer has configured that behavior. Synced notes become `obsidian_markdown` documents and are subject to the same workspace-scoped vector search rules as uploaded documents.

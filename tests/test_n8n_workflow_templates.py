@@ -30,6 +30,7 @@ def test_telegram_intake_template_has_required_actions() -> None:
         "Почати обробку",
         "Статус обробки",
         "Очистити пакет",
+        "Змінити системний промпт",
     ]:
         assert button_text in workflow_text
 

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.models.lawyer_profile import LawyerProfile
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
 from app.repositories.document_repository import DocumentRepository
 from app.schemas.n8n_schema import (
@@ -56,6 +57,11 @@ class N8nIntegrationService:
             user_id=event.user_id,
             permission=WorkspacePermission.WRITE_DOCUMENTS,
         )
+
+        profile_response = self._handle_profile_onboarding(event)
+        if profile_response is not None:
+            return profile_response
+
         package = self._get_or_create_pending_package(event)
 
         if event.action == "clear_package":
@@ -250,6 +256,128 @@ class N8nIntegrationService:
             message="Obsidian note synced.",
         )
 
+    def _handle_profile_onboarding(self, event: TelegramIntakeEvent) -> N8nIntakeResponse | None:
+        binding = self._get_active_binding(event.telegram_user_id)
+        profile = (
+            self.db.query(LawyerProfile).filter(LawyerProfile.user_id == event.user_id).one_or_none()
+        )
+        metadata = dict(binding.metadata_json or {}) if binding is not None else {}
+        onboarding_state = metadata.get("onboarding_state")
+
+        if event.action in {"edit_profile_prompt", "edit_lawyer_profile"}:
+            if binding is not None:
+                metadata["onboarding_state"] = "awaiting_system_prompt"
+                binding.metadata_json = metadata
+                self.db.commit()
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text=(
+                    "Надішліть новий системний промпт: хто ви, ваша спеціалізація, "
+                    "де і з чим працюєте, чиї інтереси відстоюєте та як має відповідати асистент."
+                ),
+            )
+
+        if onboarding_state == "awaiting_system_prompt" and event.action == "free_text" and event.text:
+            profile = self._upsert_lawyer_profile_from_text(
+                user_id=event.user_id,
+                text=event.text,
+                mode="system_prompt",
+                existing_profile=profile,
+            )
+            if binding is not None:
+                metadata.pop("onboarding_state", None)
+                binding.metadata_json = metadata
+            self._record_profile_update(event, profile.id, "system_prompt")
+            self.db.commit()
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text="Системний промпт оновлено. Тепер можете додавати матеріали або почати обробку.",
+            )
+
+        if profile is None:
+            if onboarding_state == "awaiting_activity_direction" and event.action == "free_text" and event.text:
+                profile = self._upsert_lawyer_profile_from_text(
+                    user_id=event.user_id,
+                    text=event.text,
+                    mode="activity_direction",
+                    existing_profile=None,
+                )
+                if binding is not None:
+                    metadata.pop("onboarding_state", None)
+                    binding.metadata_json = metadata
+                self._record_profile_update(event, profile.id, "activity_direction")
+                self.db.commit()
+                return N8nIntakeResponse(
+                    ok=True,
+                    reply_text=(
+                        "Профіль створено. Ви зможете змінити системний промпт у будь-який момент "
+                        "через кнопку 'Змінити системний промпт'."
+                    ),
+                )
+
+            if binding is not None:
+                metadata["onboarding_state"] = "awaiting_activity_direction"
+                binding.metadata_json = metadata
+                self.db.commit()
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text=(
+                    "Який напрямок Вашої діяльності? Опишіть вашу спеціалізацію, "
+                    "де і з чим працюєте, чиї інтереси відстоюєте та бажаний стиль відповідей."
+                ),
+            )
+
+        return None
+
+    def _upsert_lawyer_profile_from_text(
+        self,
+        user_id: str,
+        text: str,
+        mode: str,
+        existing_profile: LawyerProfile | None,
+    ) -> LawyerProfile:
+        clean_text = text.strip()
+        if mode == "activity_direction":
+            system_prompt = (
+                "Ти юридичний AI-асистент, який працює відповідно до персонального профілю юриста. "
+                f"Профіль юриста: {clean_text}. "
+                "Відповідай практично, структуровано, українською мовою, з обережними висновками "
+                "та нагадуванням перевіряти актуальні норми й судову практику."
+            )
+            values = {
+                "system_prompt": system_prompt,
+                "specialization": clean_text,
+                "extra_context": {"activity_direction": clean_text},
+            }
+        else:
+            values = {"system_prompt": clean_text}
+
+        profile = existing_profile or LawyerProfile(user_id=user_id, system_prompt=values["system_prompt"])
+        for field_name, value in values.items():
+            setattr(profile, field_name, value)
+        if existing_profile is None:
+            self.db.add(profile)
+        self.db.flush()
+        return profile
+
+    def _record_profile_update(
+        self,
+        event: TelegramIntakeEvent,
+        profile_id: str,
+        update_type: str,
+    ) -> None:
+        self.audit_log_service.record(
+            AuditLogCommand(
+                action="n8n.telegram_lawyer_profile_updated",
+                user_id=event.user_id,
+                workspace_id=event.workspace_id,
+                object_type="lawyer_profile",
+                object_id=profile_id,
+                metadata={"update_type": update_type, "chat_id": event.chat_id},
+            ),
+            commit=False,
+        )
+
     def _get_or_create_pending_package(self, event: TelegramIntakeEvent) -> N8nIntakePackage:
         package = (
             self.db.query(N8nIntakePackage)
@@ -285,14 +413,7 @@ class N8nIntegrationService:
         if not event.telegram_user_id:
             return event
 
-        binding = (
-            self.db.query(N8nTelegramBinding)
-            .filter(
-                N8nTelegramBinding.telegram_user_id == event.telegram_user_id,
-                N8nTelegramBinding.is_active.is_(True),
-            )
-            .one_or_none()
-        )
+        binding = self._get_active_binding(event.telegram_user_id)
         if binding is None:
             return event
 
@@ -301,6 +422,18 @@ class N8nIntegrationService:
             "user_id": event.user_id or binding.user_id,
         }
         return event.model_copy(update=updates)
+
+    def _get_active_binding(self, telegram_user_id: str | None) -> N8nTelegramBinding | None:
+        if not telegram_user_id:
+            return None
+        return (
+            self.db.query(N8nTelegramBinding)
+            .filter(
+                N8nTelegramBinding.telegram_user_id == telegram_user_id,
+                N8nTelegramBinding.is_active.is_(True),
+            )
+            .one_or_none()
+        )
 
     def _append_event_items(self, package: N8nIntakePackage, event: TelegramIntakeEvent) -> int:
         added_count = 0
