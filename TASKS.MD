@@ -76,7 +76,7 @@
 - [ ] Add voice transcription pipeline for Telegram voice messages.
 - [x] Add source freshness metadata for laws, court practice, and regulatory materials.
 - [ ] Fill the production `priority_manifest.csv` from official source exports and ingest the legal corpus.
-- [ ] Schedule daily Rada arrivals sync and ingest delta updates.
+- [x] Schedule daily Rada arrivals sync and ingest delta updates.
 
 ## Stage 8: Telegram User Onboarding
 
