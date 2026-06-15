@@ -67,3 +67,4 @@ def test_rada_qwen_template_syncs_official_sources_through_api() -> None:
     assert "/n8n/legal-sources/upsert" in workflow_text
     assert "JUR_RADA_SYNC_LIMIT" in workflow_text
     assert "new URL(" not in workflow_text
+    assert "$helpers" not in workflow_text
