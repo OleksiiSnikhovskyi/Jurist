@@ -68,3 +68,4 @@ def test_rada_qwen_template_syncs_official_sources_through_api() -> None:
     assert "JUR_RADA_SYNC_LIMIT" in workflow_text
     assert "new URL(" not in workflow_text
     assert "$helpers" not in workflow_text
+    assert "source_type: source.source_type" in workflow_text
