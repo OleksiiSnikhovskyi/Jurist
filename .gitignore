@@ -14,4 +14,10 @@ build/
 *.egg-info/
 uploads/
 test_uploads/
+legal_sources/official_html/
+legal_sources/rada_bulk_manifest.csv
+legal_sources/rada_bulk_state.json
+legal_sources/rada_bulk_pages/
+legal_sources/rada_bulk_dry_manifest.csv
+legal_sources/rada_bulk_dry_state.json
 .DS_Store
