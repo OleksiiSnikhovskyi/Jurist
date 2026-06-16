@@ -125,6 +125,28 @@ Required n8n environment variables:
 
 Qwen enrichment is not treated as an official source. The canonical title, URL, text, and validity metadata must come from `zakon.rada.gov.ua`; Qwen may only add tags and a short internal summary.
 
+For the first full corpus load, use the resumable bulk backfill runner rather than the daily n8n delta workflow. It reads the official Rada catalog page-by-page, keeps `next_offset` in a state file, appends the accepted rows to a manifest, downloads official HTML, and ingests only the current page files into PostgreSQL/chunks.
+
+Dry-run the first two catalog pages:
+
+```bash
+py -3 scripts/rada_bulk_backfill.py --limit-pages 2 --dry-run
+```
+
+Ingest the first two pages of valid current documents:
+
+```bash
+py -3 scripts/rada_bulk_backfill.py --limit-pages 2
+```
+
+Continue the full backfill from the saved state:
+
+```bash
+py -3 scripts/rada_bulk_backfill.py
+```
+
+By default, bulk backfill ingests only rows with `validity_status=current`. Use `--include-non-current` only when building a historical archive with obsolete or pending acts. Progress is saved in `legal_sources/rada_bulk_state.json`; the cumulative manifest is `legal_sources/rada_bulk_manifest.csv`.
+
 The priority manifest keeps only records that can be tied to official sources and later loaded into PostgreSQL/pgvector. Use this source taxonomy:
 
 - `constitution`: Конституція України.
