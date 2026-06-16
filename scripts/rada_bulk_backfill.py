@@ -15,16 +15,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-from app.config import get_settings
-from scripts.ingest_legal_sources import ingest_legal_sources
-from scripts.ingest_markdown_knowledge_base import (
-    DEFAULT_USER_ID,
-    DEFAULT_WORKSPACE_ID,
-    ensure_workspace,
-)
 from scripts.prepare_priority_legal_source_manifest import OUTPUT_FIELDS, prepare_manifest_rows
 from scripts.rada_catalog_sync import (
     download_manifest_documents,
@@ -32,6 +22,8 @@ from scripts.rada_catalog_sync import (
     read_input,
 )
 
+DEFAULT_USER_ID = "00000000-0000-0000-0000-000000000001"
+DEFAULT_WORKSPACE_ID = "00000000-0000-0000-0000-000000000101"
 
 RADA_FULL_CATALOG_PAGE_URL = "https://zakon.rada.gov.ua/laws/main/a/page"
 
@@ -134,9 +126,16 @@ def run_backfill(
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     documents_dir.mkdir(parents=True, exist_ok=True)
 
-    settings = get_settings()
-    engine = create_engine(str(settings.database_url))
-    SessionLocal = sessionmaker(bind=engine)
+    SessionLocal = None
+    if not dry_run:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from app.config import get_settings
+
+        settings = get_settings()
+        engine = create_engine(str(settings.database_url))
+        SessionLocal = sessionmaker(bind=engine)
 
     while True:
         if limit_pages is not None and page_count >= limit_pages:
@@ -164,6 +163,9 @@ def run_backfill(
         download_counts = {"downloaded": 0, "skipped": 0, "failed": 0}
         ingest_counts = {"legal_sources": 0, "documents": 0, "chunks": 0, "skipped": 0}
         if not dry_run:
+            from scripts.ingest_legal_sources import ingest_legal_sources
+            from scripts.ingest_markdown_knowledge_base import ensure_workspace
+
             download_counts = download_manifest_documents(
                 prepared,
                 documents_dir=documents_dir,
