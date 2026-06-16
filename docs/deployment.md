@@ -121,7 +121,7 @@ Required n8n environment variables:
 - `JUR_KB_USER_ID`: curator user used for audit logs.
 - `JUR_OLLAMA_BASE_URL`: Ollama HTTP API URL. On the current server, n8n reaches Ollama at `http://172.18.0.1:11434`.
 - `JUR_OLLAMA_MODEL`: default `qwen3:8b`.
-- `JUR_RADA_SYNC_LIMIT`: safety limit for documents per run, default `1` for controlled smoke runs. Increase it after monitoring execution time and Ollama load.
+- `JUR_RADA_SYNC_LIMIT`: safety limit for documents per run, default `3` after the first smoke run. Increase it gradually after monitoring execution time and Ollama load.
 
 Qwen enrichment is not treated as an official source. The canonical title, URL, text, and validity metadata must come from `zakon.rada.gov.ua`; Qwen may only add tags and a short internal summary.
 
