@@ -26,6 +26,8 @@ Workspace operations use `WorkspaceService` over `WorkspaceRepository`. Creating
 
 Document ingestion uses `DocumentUploadService` for file storage and metadata, `DocumentTextExtractor` for supported PDF/DOCX text extraction, and `DocumentChunkingService` to persist workspace-scoped chunks for later embeddings and vector search.
 
+Knowledge-base ingestion and LLM answer generation are separate flows. Ingestion writes official documents and chunks into PostgreSQL/pgvector without treating LLM output as source truth. Local Ollama/Qwen can enrich Rada metadata in n8n and can generate Telegram package answers in FastAPI when `JUR_OLLAMA_BASE_URL` is configured, but canonical legal text and metadata still come from official sources.
+
 Obsidian vault ingestion parses Markdown notes into note/chunk objects for indexing. Vault notes are treated like workspace-scoped private knowledge, preserving note path, frontmatter, tags, and links as retrieval metadata.
 
 Embedding generation is configured through `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, and `EMBEDDING_DIMENSIONS`. The default `deterministic` provider is for local development and tests only; production semantic search should use a real embedding model with the same vector dimension as the database schema.

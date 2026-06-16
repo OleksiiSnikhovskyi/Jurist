@@ -179,8 +179,9 @@ Creates or updates the active mapping between a Telegram account and an applicat
 
 `POST /n8n/intake/process`
 
-Starts explicit package processing after the user presses `Почати обробку`. The endpoint marks the package as `processing_requested` and records the requested agent/question for the next processing step.
-It can also store `client_profile_id` in the package metadata so the downstream processing step can include the client context in agent requests.
+Starts explicit package processing after the user presses `Почати обробку`. The endpoint records the requested agent/question and can store `client_profile_id` in package metadata so the processing step includes client context.
+
+When `JUR_OLLAMA_BASE_URL` is configured, FastAPI sends extracted text messages, the lawyer system prompt, the active client profile, and workspace-scoped retrieval fragments to local Ollama/Qwen and returns the answer in `answer`. The package status becomes `processed` on success, `llm_error` on Ollama failure, or `waiting_for_text_extraction` when the package contains only files/media without extracted text.
 
 `POST /n8n/obsidian/sync-note`
 

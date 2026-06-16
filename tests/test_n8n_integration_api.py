@@ -15,6 +15,9 @@ from app.models.lawyer_profile import LawyerProfile
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
+from app.schemas.n8n_schema import N8nProcessPackageRequest
+from app.services.n8n_integration_service import N8nIntegrationService
+from app.services.ollama_service import LegalPackageAnalysisCommand, LegalPackageAnalysisResult
 
 
 @pytest.fixture()
@@ -613,6 +616,82 @@ def test_start_package_processing_marks_package_requested(
     assert payload["item_count"] == 1
     db_session.refresh(package)
     assert package.requested_agent == "legal_research"
+
+
+class FakeLegalAnalysisService:
+    def __init__(self) -> None:
+        self.command: LegalPackageAnalysisCommand | None = None
+
+    def is_configured(self) -> bool:
+        return True
+
+    def analyze_package(self, command: LegalPackageAnalysisCommand) -> LegalPackageAnalysisResult:
+        self.command = command
+        return LegalPackageAnalysisResult(answer="LLM відповідь для юриста.", model="fake-qwen")
+
+
+def test_start_package_processing_can_return_ollama_answer(
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    package = N8nIntakePackage(
+        id="package-llm",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        status="queued",
+        question="Проаналізуй ризики",
+    )
+    db_session.add(package)
+    db_session.add(N8nIntakeItem(package_id="package-llm", item_type="text", text="Є договір поставки."))
+    db_session.commit()
+    fake_llm = FakeLegalAnalysisService()
+
+    response = N8nIntegrationService(
+        db_session,
+        legal_analysis_service=fake_llm,
+    ).start_package_processing(
+        request=N8nProcessPackageRequest(
+            package_id="package-llm",
+            requested_agent="legal_research",
+            question="Проаналізуй ризики",
+        )
+    )
+
+    assert response.ok is True
+    assert response.status == "processed"
+    assert response.answer == "LLM відповідь для юриста."
+    assert fake_llm.command is not None
+    assert "договір поставки" in fake_llm.command.package_text
+    db_session.refresh(package)
+    assert package.metadata_json["llm_model"] == "fake-qwen"
+
+
+def test_telegram_start_processing_returns_ollama_answer(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session)
+    fake_llm = FakeLegalAnalysisService()
+
+    original_init = N8nIntegrationService.__init__
+
+    def init_with_fake_llm(self: N8nIntegrationService, *args, **kwargs) -> None:
+        kwargs["legal_analysis_service"] = fake_llm
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(N8nIntegrationService, "__init__", init_with_fake_llm)
+
+    _post_telegram_text(client, "Є договір поставки з простроченням оплати.")
+    payload = _post_telegram_text(client, "Почати обробку", "start_processing")
+
+    assert payload["status"] == "processed"
+    assert payload["reply_text"] == "LLM відповідь для юриста."
 
 
 def test_obsidian_sync_note_creates_document_and_chunks(

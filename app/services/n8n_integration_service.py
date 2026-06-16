@@ -23,8 +23,16 @@ from app.schemas.n8n_schema import (
     TelegramIntakeEvent,
 )
 from app.services.access_control import AccessControlService, WorkspacePermission
+from app.services.agent_context_service import AgentContextService
 from app.services.audit_log_service import AuditLogCommand, AuditLogService
 from app.services.chunking import split_text
+from app.services.ollama_service import (
+    LegalPackageAnalysisCommand,
+    OllamaLegalAnalysisService,
+    OllamaRequestError,
+    SourceFragment,
+)
+from app.services.vector_search_service import VectorSearchCommand, VectorSearchService
 
 
 class IntakePackageNotFoundError(Exception):
@@ -49,11 +57,17 @@ class N8nIntegrationService:
         access_control: AccessControlService | None = None,
         document_repository: DocumentRepository | None = None,
         audit_log_service: AuditLogService | None = None,
+        legal_analysis_service: OllamaLegalAnalysisService | None = None,
+        vector_search_service: VectorSearchService | None = None,
+        agent_context_service: AgentContextService | None = None,
     ) -> None:
         self.db = db
         self.access_control = access_control or AccessControlService(db)
         self.document_repository = document_repository or DocumentRepository(db)
         self.audit_log_service = audit_log_service or AuditLogService(db)
+        self.legal_analysis_service = legal_analysis_service or OllamaLegalAnalysisService()
+        self.vector_search_service = vector_search_service or VectorSearchService(db)
+        self.agent_context_service = agent_context_service or AgentContextService(db)
 
     def handle_telegram_event(self, event: TelegramIntakeEvent) -> N8nIntakeResponse:
         event = self._event_with_resolved_identity(event)
@@ -94,7 +108,11 @@ class N8nIntegrationService:
             package.question = event.question or event.text
             self._attach_active_client_profile(package, event)
             self._clear_incomplete_client_profile_draft(event)
-            reply_text = "Пакет поставлено в чергу на обробку."
+            reply_text = self._try_process_package_with_llm(
+                package=package,
+                workspace_id=event.workspace_id,
+                user_id=event.user_id,
+            )
         else:
             added_count = self._append_event_items(package, event)
             reply_text = (
@@ -210,6 +228,11 @@ class N8nIntegrationService:
         if request.client_profile_id:
             metadata["client_profile_id"] = request.client_profile_id
         package.metadata_json = metadata
+        answer = self._try_process_package_with_llm(
+            package=package,
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
         self.audit_log_service.record(
             AuditLogCommand(
                 action="n8n.package_processing_requested",
@@ -231,7 +254,134 @@ class N8nIntegrationService:
             status=package.status,
             item_count=self._count_items(package.id).total,
             message="Package processing was requested.",
+            answer=answer if package.status == "processed" else None,
         )
+
+    def _try_process_package_with_llm(
+        self,
+        *,
+        package: N8nIntakePackage,
+        workspace_id: str,
+        user_id: str,
+    ) -> str:
+        if not self.legal_analysis_service.is_configured():
+            return "Пакет поставлено в чергу на обробку. LLM ще не налаштовано для FastAPI."
+
+        command = self._build_package_analysis_command(
+            package=package,
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+        if not command.package_text.strip():
+            package.status = "waiting_for_text_extraction"
+            metadata = dict(package.metadata_json or {})
+            metadata["processing_note"] = "No extracted text is available for LLM analysis."
+            package.metadata_json = metadata
+            return (
+                "Пакет містить вкладення, але текст із файлів ще не витягнуто. "
+                "Потрібно підключити завантаження файлів Telegram/OCR/парсинг документів перед LLM-аналізом."
+            )
+
+        try:
+            result = self.legal_analysis_service.analyze_package(command)
+        except OllamaRequestError as exc:
+            package.status = "llm_error"
+            metadata = dict(package.metadata_json or {})
+            metadata["llm_error"] = str(exc)
+            package.metadata_json = metadata
+            return f"Пакет прийнято, але Ollama не змогла сформувати відповідь: {exc}"
+
+        package.status = "processed"
+        metadata = dict(package.metadata_json or {})
+        metadata["llm_model"] = result.model
+        metadata["llm_answer"] = result.answer
+        metadata["processed_at"] = datetime.now(UTC).isoformat()
+        package.metadata_json = metadata
+        return result.answer
+
+    def _build_package_analysis_command(
+        self,
+        *,
+        package: N8nIntakePackage,
+        workspace_id: str,
+        user_id: str,
+    ) -> LegalPackageAnalysisCommand:
+        items = (
+            self.db.query(N8nIntakeItem)
+            .filter(N8nIntakeItem.package_id == package.id)
+            .order_by(N8nIntakeItem.created_at.asc())
+            .all()
+        )
+        text_parts = [
+            f"- {item.text.strip()}"
+            for item in items
+            if item.item_type == "text" and item.text and item.text.strip()
+        ]
+        attachment_notes = [
+            self._format_attachment_note(item)
+            for item in items
+            if item.item_type != "text"
+        ]
+        package_text = "\n".join(text_parts)
+        question = package.question or "Опрацюй матеріали пакета та підготуй юридичну відповідь."
+        lawyer_profile = (
+            self.db.query(LawyerProfile)
+            .filter(LawyerProfile.user_id == user_id)
+            .one_or_none()
+        )
+        lawyer_system_prompt = (
+            lawyer_profile.system_prompt
+            if lawyer_profile is not None
+            else "Працюй як юридичний асистент українського юриста."
+        )
+        client_context = None
+        client_profile_id = (package.metadata_json or {}).get("client_profile_id")
+        if client_profile_id:
+            client = self.agent_context_service.load_client_context(
+                client_profile_id=client_profile_id,
+                workspace_id=workspace_id,
+                user_id=user_id,
+            )
+            client_context = client.text if client else None
+
+        source_fragments: list[SourceFragment] = []
+        query_text = f"{question}\n{package_text}".strip()
+        if query_text:
+            results = self.vector_search_service.search(
+                VectorSearchCommand(
+                    workspace_id=workspace_id,
+                    user_id=user_id,
+                    query=query_text,
+                    limit=6,
+                )
+            )
+            source_fragments = [
+                SourceFragment(
+                    document_id=result.document_id,
+                    chunk_index=result.chunk_index,
+                    score=result.score,
+                    text=result.chunk_text[:900],
+                )
+                for result in results
+            ]
+
+        return LegalPackageAnalysisCommand(
+            question=question,
+            package_text=package_text,
+            lawyer_system_prompt=lawyer_system_prompt,
+            client_context=client_context,
+            source_fragments=source_fragments,
+            attachment_notes=attachment_notes,
+        )
+
+    def _format_attachment_note(self, item: N8nIntakeItem) -> str:
+        parts = [
+            f"- type={item.item_type}",
+            f"file_name={item.file_name}" if item.file_name else None,
+            f"mime_type={item.mime_type}" if item.mime_type else None,
+            f"file_id={item.external_file_id}" if item.external_file_id else None,
+        ]
+        return ", ".join(part for part in parts if part)
 
     def sync_obsidian_note(self, request: N8nObsidianNoteRequest) -> N8nObsidianNoteResponse:
         self.access_control.require_permission(

@@ -76,6 +76,7 @@ class N8nProcessPackageResponse(BaseModel):
     status: str
     item_count: int
     message: str
+    answer: str | None = None
 
 
 class N8nObsidianNoteRequest(BaseModel):
