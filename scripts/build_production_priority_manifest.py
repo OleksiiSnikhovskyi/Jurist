@@ -65,9 +65,9 @@ def main() -> None:
         allow_issues=args.allow_issues,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    if result["issues"] and not args.allow_issues:
-        raise SystemExit(1)
     if result["missing_files"] and not args.allow_missing_files:
+        raise SystemExit(1)
+    if result["issues"] and args.allow_issues:
         raise SystemExit(1)
 
 
@@ -92,8 +92,10 @@ def build_priority_manifest(
     output_rows = existing if not allow_missing_files else prepared
     write_manifest(output_path, output_rows)
 
+    has_missing_files = bool(missing) and not allow_missing_files
+    has_unfiltered_issues = bool(issues) and allow_issues
     result = {
-        "ok": (not issues or allow_issues) and (not missing or allow_missing_files),
+        "ok": not has_missing_files and not has_unfiltered_issues,
         "inputs": per_input,
         "input_rows": len(rows),
         "output_rows": len(output_rows),
