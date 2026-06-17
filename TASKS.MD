@@ -72,10 +72,10 @@
 - [x] Add `JUR_Rada_Law_Sync_Qwen` n8n template and API upsert endpoint for Ollama/Qwen-enriched Rada ingestion.
 - [x] Ingest selected Markdown/Obsidian materials into the production workspace.
 - [x] Add PDF/DOCX/XLSX/HTML bulk ingestion flow for legal source packs.
-- [ ] Add OCR pipeline for photos and scanned documents.
-- [ ] Add voice transcription pipeline for Telegram voice messages.
+- [x] Add OCR pipeline for photos and scanned documents.
+- [x] Add voice transcription pipeline for Telegram voice messages.
 - [x] Add source freshness metadata for laws, court practice, and regulatory materials.
-- [ ] Fill the production `priority_manifest.csv` from official source exports and ingest the legal corpus.
+- [ ] Fill the production `priority_manifest.csv` from official source exports and ingest the legal corpus. Rada catalog backfill is running in validated 25-page batches from official current documents.
 - [x] Schedule daily Rada arrivals sync and ingest delta updates.
 
 ## Stage 8: Telegram User Onboarding

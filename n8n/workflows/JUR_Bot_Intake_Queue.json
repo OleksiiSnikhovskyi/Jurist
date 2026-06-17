@@ -226,6 +226,252 @@
           "name": "__TELEGRAM_CREDENTIAL_NAME__"
         }
       }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const intake = $input.first().json || {};\nconst event = $('Normalize Telegram Update').first().json || {};\nconst attachments = Array.isArray(event.attachments) ? event.attachments : [];\n\nif (!intake.ok || !intake.package_id || attachments.length === 0) {\n  return [];\n}\n\nreturn attachments\n  .filter((attachment) => attachment && attachment.file_id)\n  .map((attachment) => ({\n    json: {\n      package_id: intake.package_id,\n      chat_id: intake.chat_id || event.chat_id,\n      workspace_id: intake.workspace_id || event.workspace_id || null,\n      user_id: intake.user_id || event.user_id || null,\n      item_type: attachment.type,\n      external_file_id: attachment.file_id,\n      file_name: attachment.file_name || (attachment.type + '-' + attachment.file_id),\n      mime_type: attachment.mime_type || null,\n      file_size: attachment.file_size || null,\n      duration: attachment.duration || null,\n      extraction_requested_at: new Date().toISOString()\n    }\n  }));"
+      },
+      "id": "jur-build-extraction-jobs",
+      "name": "Build Extraction Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "jur-has-file-id",
+              "leftValue": "={{$json.external_file_id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "jur-has-extraction-jobs",
+      "name": "Has Extraction Jobs",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "jur-is-voice",
+              "leftValue": "={{$json.item_type}}",
+              "rightValue": "voice",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "jur-route-voice-document",
+      "name": "Route Voice Or Document",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{$json.external_file_id}}",
+        "additionalFields": {}
+      },
+      "id": "jur-download-document-file",
+      "name": "Download Telegram Document",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        680,
+        430
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "__TELEGRAM_CREDENTIAL_ID__",
+          "name": "__TELEGRAM_CREDENTIAL_NAME__"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first();\nconst job = item.json || {};\nconst binaryValues = Object.values(item.binary || {});\nconst binary = binaryValues[0] || {};\nconst fileName = binary.fileName || job.file_name || (job.item_type + '-' + job.external_file_id);\nconst mimeType = binary.mimeType || job.mime_type || 'application/octet-stream';\nconst extension = (fileName.split('.').pop() || '').toLowerCase();\nconst sourceFormat = extension || (mimeType.split('/').pop() || 'bin');\n\nreturn [{\n  json: {\n    ...job,\n    source_filename: fileName,\n    source_mime: mimeType,\n    source_size: binary.fileSize || job.file_size || null,\n    source_format: sourceFormat,\n    source_base64: binary.data || '',\n    processing_lane: job.item_type === 'photo' || mimeType.startsWith('image/') ? 'ocr' : 'auto',\n    document_type: job.item_type === 'photo' ? 'telegram_photo' : 'telegram_document'\n  }\n}];"
+      },
+      "id": "jur-prepare-document-parse",
+      "name": "Prepare Document Parse Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        430
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://linguistproai-internal-ai:8011/internal/v2/parse-document",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { doc_id: $json.external_file_id, source_filename: $json.source_filename, source_format: $json.source_format, source_base64: $json.source_base64, source_mime: $json.source_mime, source_size: $json.source_size, processing_lane: $json.processing_lane, preserve_layout: true, preserve_fonts: true, extract_images: false } }}",
+        "options": {
+          "timeout": 240000
+        }
+      },
+      "id": "jur-parse-document-linguistpro",
+      "name": "Parse Document With LinguistProAi",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1160,
+        430
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const parsed = $input.first().json || {};\nconst job = $('Prepare Document Parse Payload').first().json || {};\nconst nodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];\nconst nodeText = nodes.map((node) => node.source_text || node.text || '').filter(Boolean).join('\\n\\n');\nconst extractedText = parsed.full_text || parsed.extracted_text || parsed.text || parsed.source_text || nodeText;\n\nif (!extractedText || !String(extractedText).trim()) {\n  return [];\n}\n\nreturn [{\n  json: {\n    package_id: job.package_id,\n    external_file_id: job.external_file_id,\n    workspace_id: job.workspace_id,\n    user_id: job.user_id,\n    extracted_text: String(extractedText).trim(),\n    file_name: job.source_filename || job.file_name,\n    mime_type: job.source_mime || job.mime_type,\n    extraction_method: 'linguistproai.parse_document',\n    document_type: job.document_type,\n    metadata: {\n      item_type: job.item_type,\n      source_size: job.source_size,\n      processing_lane: job.processing_lane,\n      parsed_doc_id: parsed.doc_id || null,\n      parsed_node_count: nodes.length\n    }\n  }\n}];"
+      },
+      "id": "jur-build-document-extracted-text",
+      "name": "Build Document Extracted Text Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        430
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.JUR_API_BASE_URL}}/n8n/intake/extracted-text",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "jur-attach-document-extracted-text",
+      "name": "Attach Document Extracted Text To API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1640,
+        430
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{$json.external_file_id}}",
+        "additionalFields": {}
+      },
+      "id": "jur-download-voice-file",
+      "name": "Download Telegram Voice",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        680,
+        170
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "__TELEGRAM_CREDENTIAL_ID__",
+          "name": "__TELEGRAM_CREDENTIAL_NAME__"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {}
+      },
+      "id": "jur-transcribe-voice",
+      "name": "Transcribe Telegram Voice",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        920,
+        170
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "__OPENAI_CREDENTIAL_ID__",
+          "name": "__OPENAI_CREDENTIAL_NAME__"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const transcription = $input.first().json || {};\nconst job = $('Download Telegram Voice').first().json || $('Route Voice Or Document').first().json || {};\nconst text = transcription.text || transcription.transcript || transcription.output || '';\n\nif (!String(text).trim()) {\n  return [];\n}\n\nreturn [{\n  json: {\n    package_id: job.package_id,\n    external_file_id: job.external_file_id,\n    workspace_id: job.workspace_id,\n    user_id: job.user_id,\n    extracted_text: String(text).trim(),\n    file_name: job.file_name || ('voice-' + job.external_file_id + '.oga'),\n    mime_type: job.mime_type || 'audio/ogg',\n    extraction_method: 'telegram.voice_transcription',\n    document_type: 'telegram_voice',\n    metadata: {\n      item_type: 'voice',\n      duration: job.duration || null,\n      source_size: job.file_size || null\n    }\n  }\n}];"
+      },
+      "id": "jur-build-voice-extracted-text",
+      "name": "Build Voice Extracted Text Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.JUR_API_BASE_URL}}/n8n/intake/extracted-text",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "jur-attach-voice-extracted-text",
+      "name": "Attach Voice Extracted Text To API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        170
+      ]
     }
   ],
   "connections": {
@@ -258,6 +504,11 @@
             "node": "Route Reply Menu",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Build Extraction Jobs",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -274,6 +525,124 @@
         [
           {
             "node": "Telegram Intake Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Extraction Jobs": {
+      "main": [
+        [
+          {
+            "node": "Has Extraction Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Extraction Jobs": {
+      "main": [
+        [
+          {
+            "node": "Route Voice Or Document",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Route Voice Or Document": {
+      "main": [
+        [
+          {
+            "node": "Download Telegram Voice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download Telegram Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Telegram Document": {
+      "main": [
+        [
+          {
+            "node": "Prepare Document Parse Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Document Parse Payload": {
+      "main": [
+        [
+          {
+            "node": "Parse Document With LinguistProAi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Document With LinguistProAi": {
+      "main": [
+        [
+          {
+            "node": "Build Document Extracted Text Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Document Extracted Text Payload": {
+      "main": [
+        [
+          {
+            "node": "Attach Document Extracted Text To API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Telegram Voice": {
+      "main": [
+        [
+          {
+            "node": "Transcribe Telegram Voice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe Telegram Voice": {
+      "main": [
+        [
+          {
+            "node": "Build Voice Extracted Text Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Voice Extracted Text Payload": {
+      "main": [
+        [
+          {
+            "node": "Attach Voice Extracted Text To API",
             "type": "main",
             "index": 0
           }

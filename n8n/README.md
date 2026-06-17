@@ -64,6 +64,13 @@ For voice messages, reuse the existing Telegram voice pattern from LiveCalendar:
 
 After any OCR/text extraction/transcription step, call `POST /n8n/intake/extracted-text` with `package_id`, `external_file_id` or `item_id`, and `extracted_text`. FastAPI updates the matching intake item, creates/updates a private workspace document, rebuilds chunks, and then `Почати обробку` can include that text in the Qwen legal analysis.
 
+`JUR_Bot_Intake_Queue` now includes the first production extraction branch:
+
+- after `/n8n/intake/telegram` returns a `package_id`, attachment metadata is expanded into extraction jobs;
+- document/photo jobs download the Telegram file, send base64 content to `http://linguistproai-internal-ai:8011/internal/v2/parse-document`, collect extracted node text, and call `/n8n/intake/extracted-text`;
+- voice jobs download the Telegram voice file, transcribe audio with the existing OpenAI transcription node pattern, and call `/n8n/intake/extracted-text`;
+- this branch indexes extracted text only. Legal analysis still waits for the explicit `Почати обробку` action.
+
 The workflow must keep a clear package/session ID so that multiple uploads from one user can be processed together. If a user sends files without pressing `Почати обробку`, the system should acknowledge receipt and wait.
 
 ## Obsidian Requirements
