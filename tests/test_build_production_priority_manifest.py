@@ -91,6 +91,7 @@ def test_build_priority_manifest_filters_missing_files(manifest_dir: Path) -> No
     assert result["input_rows"] == 2
     assert result["output_rows"] == 1
     assert result["missing_files"] == 1
+    assert result["issue_examples"] == []
     assert summary_path.exists()
 
     with output_path.open("r", encoding="utf-8", newline="") as handle:

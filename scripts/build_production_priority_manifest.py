@@ -101,6 +101,7 @@ def build_priority_manifest(
         "missing_files": len(missing),
         "output": str(output_path),
         "summary": str(summary_path) if summary_path else None,
+        "issue_examples": issues[:10],
         "missing_file_examples": missing[:10],
     }
     if summary_path:
