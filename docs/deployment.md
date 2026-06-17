@@ -148,6 +148,38 @@ py -3 scripts/rada_bulk_backfill.py
 
 By default, bulk backfill ingests only rows with `validity_status=current`. Use `--include-non-current` only when building a historical archive with obsolete or pending acts. Progress is saved in `legal_sources/rada_bulk_state.json`; the cumulative manifest is `legal_sources/rada_bulk_manifest.csv`.
 
+On the production server, start one validated 25-page batch with the guarded Docker runner:
+
+```bash
+cd /home/oleksii/Agent_Jurist
+bash scripts/run_rada_bulk_batch.sh
+```
+
+The runner refuses to start when another `jur-rada-bulk*` container is already running. You can tune a run without editing the script:
+
+```bash
+LIMIT_PAGES=10 SLEEP_SECONDS=2 bash scripts/run_rada_bulk_batch.sh
+```
+
+Check progress:
+
+```bash
+docker ps --format '{{.Names}} {{.Status}}' | grep jur-rada-bulk || true
+cat legal_sources/rada_bulk_state.json
+```
+
+After one or more batches finish, build the production priority manifest from the cumulative official export manifest:
+
+```bash
+python scripts/build_production_priority_manifest.py \
+  legal_sources/rada_bulk_manifest.csv \
+  --output legal_sources/priority_manifest.csv \
+  --documents-dir legal_sources \
+  --summary legal_sources/priority_manifest.summary.json
+```
+
+The builder validates official source policy, deduplicates rows, and writes only rows whose `file_path` exists under `legal_sources/`. If any rows have validation issues or missing files, it still writes the filtered manifest and summary, then exits non-zero so the operator can review the gap before treating the corpus as complete.
+
 The priority manifest keeps only records that can be tied to official sources and later loaded into PostgreSQL/pgvector. Use this source taxonomy:
 
 - `constitution`: Конституція України.
