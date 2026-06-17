@@ -7,12 +7,14 @@ import pytest
 
 from scripts.ingest_legal_sources import (
     SourceManifestEntry,
+    find_manifest_entry,
     iter_source_files,
     load_manifest,
     parse_date,
     parse_datetime,
     parse_manifest_entry,
     parse_tags,
+    truncate_for_column,
 )
 
 
@@ -101,3 +103,28 @@ def test_iter_source_files_filters_supported_extensions(source_dir: Path) -> Non
 def test_parse_tags_accepts_lists_and_delimited_strings() -> None:
     assert parse_tags(["civil", " code "]) == ["civil", "code"]
     assert parse_tags("civil; code, court") == ["civil", "code", "court"]
+
+
+def test_find_manifest_entry_matches_relative_suffix() -> None:
+    entry = SourceManifestEntry(
+        file_path="official_html/rada/long-law.html",
+        source_name="Довгий акт",
+        source_url="https://zakon.rada.gov.ua/laws/show/example",
+    )
+    manifest = {
+        "official_html/rada/long-law.html": entry,
+        "long-law.html": entry,
+    }
+
+    found = find_manifest_entry(manifest, Path("/work/legal_sources/official_html/rada/long-law.html"))
+
+    assert found == entry
+
+
+def test_truncate_for_column_preserves_short_values_and_caps_long_values() -> None:
+    assert truncate_for_column("Закон", 10) == "Закон"
+
+    truncated = truncate_for_column("А" * 20, 10)
+
+    assert len(truncated) == 10
+    assert truncated.endswith("…")

@@ -13,7 +13,7 @@ class LegalSource(Base):
 
     id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=new_uuid)
     source_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    source_name: Mapped[str] = mapped_column(String(500), nullable=False)
+    source_name: Mapped[str] = mapped_column(Text, nullable=False)
     source_url: Mapped[str | None] = mapped_column(String(1000))
     jurisdiction: Mapped[str] = mapped_column(String(100), default="Ukraine", nullable=False)
     document_number: Mapped[str | None] = mapped_column(String(100))
@@ -28,4 +28,3 @@ class LegalSource(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-

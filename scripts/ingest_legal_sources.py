@@ -123,7 +123,7 @@ def ingest_legal_sources(
     counts = {"legal_sources": 0, "documents": 0, "chunks": 0, "skipped": 0}
 
     for file_path in iter_source_files(paths):
-        entry = manifest.get(_manifest_key(file_path)) or manifest.get(file_path.name)
+        entry = find_manifest_entry(manifest, file_path)
         text = extract_source_text(file_path, extractor)
         if not text:
             counts["skipped"] += 1
@@ -262,6 +262,7 @@ def upsert_document(
     document_type: str,
 ) -> Document:
     source_path = file_path.resolve().as_posix()
+    document_name = truncate_for_column(file_path.name, 500)
     document = (
         db.query(Document)
         .filter(
@@ -274,7 +275,7 @@ def upsert_document(
         document = Document(
             workspace_id=workspace_id,
             uploaded_by=user_id,
-            document_name=file_path.name,
+            document_name=document_name,
             document_type=document_type,
             file_path=source_path,
             extracted_text=text,
@@ -285,7 +286,7 @@ def upsert_document(
         return document
 
     document.uploaded_by = user_id
-    document.document_name = file_path.name
+    document.document_name = document_name
     document.document_type = document_type
     document.extracted_text = text
     db.add(document)
@@ -342,6 +343,31 @@ def parse_tags(value: Any) -> list[str]:
 
 def _manifest_key(file_path: Path) -> str:
     return file_path.as_posix()
+
+
+def find_manifest_entry(
+    manifest: dict[str, SourceManifestEntry],
+    file_path: Path,
+) -> SourceManifestEntry | None:
+    candidates = [
+        _manifest_key(file_path),
+        file_path.name,
+    ]
+    parts = file_path.as_posix().split("/")
+    for index in range(1, len(parts)):
+        candidates.append("/".join(parts[index:]))
+
+    for candidate in candidates:
+        entry = manifest.get(candidate)
+        if entry is not None:
+            return entry
+    return None
+
+
+def truncate_for_column(value: str, max_length: int) -> str:
+    if len(value) <= max_length:
+        return value
+    return value[: max_length - 1].rstrip() + "…"
 
 
 def _clean_optional(value: Any) -> str | None:
