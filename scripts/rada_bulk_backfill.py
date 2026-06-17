@@ -62,6 +62,8 @@ def main() -> None:
     parser.add_argument("--limit-pages", type=int)
     parser.add_argument("--limit-documents", type=int)
     parser.add_argument("--sleep-seconds", type=float, default=0.5)
+    parser.add_argument("--catalog-retries", type=int, default=3)
+    parser.add_argument("--catalog-retry-seconds", type=float, default=10.0)
     parser.add_argument("--chunk-size", type=int, default=1200)
     parser.add_argument("--overlap", type=int, default=150)
     parser.add_argument(
@@ -87,6 +89,8 @@ def main() -> None:
         limit_pages=args.limit_pages,
         limit_documents=args.limit_documents,
         sleep_seconds=args.sleep_seconds,
+        catalog_retries=args.catalog_retries,
+        catalog_retry_seconds=args.catalog_retry_seconds,
         chunk_size=args.chunk_size,
         overlap=args.overlap,
         current_only=not args.include_non_current,
@@ -111,13 +115,15 @@ def run_backfill(
     limit_pages: int | None = None,
     limit_documents: int | None = None,
     sleep_seconds: float = 0.5,
+    catalog_retries: int = 3,
+    catalog_retry_seconds: float = 10.0,
     chunk_size: int = 1200,
     overlap: int = 150,
     current_only: bool = False,
     overwrite: bool = False,
     dry_run: bool = False,
     fetcher: Any = read_input,
-) -> dict[str, int | str | bool]:
+) -> dict[str, int | str | bool | None]:
     state = load_state(state_path)
     page_count = 0
     accepted_documents = 0
@@ -125,6 +131,7 @@ def run_backfill(
     state_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     documents_dir.mkdir(parents=True, exist_ok=True)
+    stopped_reason = None
 
     SessionLocal = None
     if not dry_run:
@@ -144,7 +151,16 @@ def run_backfill(
             break
 
         page_url = build_catalog_page_url(catalog_url, state.next_offset)
-        html = fetcher(page_url)
+        try:
+            html = fetch_catalog_page_with_retries(
+                page_url,
+                fetcher=fetcher,
+                retries=catalog_retries,
+                retry_seconds=catalog_retry_seconds,
+            )
+        except Exception as exc:
+            stopped_reason = f"catalog_fetch_failed:{type(exc).__name__}:{exc}"
+            break
         rows = parse_rada_arrivals_html(html, checked_at=checked_at)
         if not rows:
             break
@@ -223,10 +239,11 @@ def run_backfill(
         time.sleep(max(0.0, sleep_seconds))
 
     return {
-        "ok": True,
+        "ok": stopped_reason is None,
         "dry_run": dry_run,
         "pages_this_run": page_count,
         "documents_this_run": accepted_documents,
+        "stopped_reason": stopped_reason,
         "next_offset": state.next_offset,
         "catalog_pages_total": state.catalog_pages,
         "manifest_rows_total": state.manifest_rows,
@@ -242,6 +259,27 @@ def build_catalog_page_url(catalog_url: str, offset: int) -> str:
     if offset <= 1:
         return clean_url
     return f"{clean_url}{offset}"
+
+
+def fetch_catalog_page_with_retries(
+    page_url: str,
+    *,
+    fetcher: Any,
+    retries: int,
+    retry_seconds: float,
+) -> str:
+    attempts = max(1, retries + 1)
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return fetcher(page_url)
+        except Exception as exc:
+            last_error = exc
+            if attempt >= attempts - 1:
+                break
+            time.sleep(max(0.0, retry_seconds))
+    assert last_error is not None
+    raise last_error
 
 
 def filter_manifest_rows(rows: list[dict[str, str]], *, current_only: bool) -> list[dict[str, str]]:

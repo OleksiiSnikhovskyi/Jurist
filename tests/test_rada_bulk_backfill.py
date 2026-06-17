@@ -8,8 +8,10 @@ import pytest
 from scripts.rada_bulk_backfill import (
     BulkBackfillState,
     build_catalog_page_url,
+    fetch_catalog_page_with_retries,
     filter_manifest_rows,
     load_state,
+    run_backfill,
     save_progress,
 )
 
@@ -68,3 +70,50 @@ def test_backfill_state_round_trip(backfill_dir: Path) -> None:
     assert loaded.next_offset == 51
     assert loaded.manifest_rows == 40
     assert loaded.ingested_chunks == 120
+
+
+def test_fetch_catalog_page_retries_before_raising() -> None:
+    attempts = {"count": 0}
+
+    def flaky_fetcher(_url: str) -> str:
+        attempts["count"] += 1
+        if attempts["count"] < 2:
+            raise RuntimeError("temporary")
+        return "<html></html>"
+
+    assert fetch_catalog_page_with_retries(
+        "https://zakon.rada.gov.ua/laws/main/a/page",
+        fetcher=flaky_fetcher,
+        retries=2,
+        retry_seconds=0,
+    ) == "<html></html>"
+    assert attempts["count"] == 2
+
+
+def test_backfill_stops_gracefully_when_catalog_fetch_fails(backfill_dir: Path) -> None:
+    def failing_fetcher(_url: str) -> str:
+        raise RuntimeError("forbidden")
+
+    result = run_backfill(
+        catalog_url="https://zakon.rada.gov.ua/laws/main/a/page",
+        documents_dir=backfill_dir / "documents",
+        manifest_path=backfill_dir / "manifest.csv",
+        state_path=backfill_dir / "state.json",
+        workspace_id="workspace-1",
+        workspace_name="Workspace",
+        user_id="user-1",
+        user_email="user@example.com",
+        user_name="User",
+        limit_pages=1,
+        sleep_seconds=0,
+        catalog_retries=1,
+        catalog_retry_seconds=0,
+        current_only=True,
+        dry_run=True,
+        fetcher=failing_fetcher,
+    )
+
+    assert result["ok"] is False
+    assert result["pages_this_run"] == 0
+    assert result["next_offset"] == 1
+    assert str(result["stopped_reason"]).startswith("catalog_fetch_failed:RuntimeError")
