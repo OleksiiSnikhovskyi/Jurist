@@ -161,6 +161,20 @@ The runner refuses to start when another `jur-rada-bulk*` container is already r
 LIMIT_PAGES=10 SLEEP_SECONDS=2 bash scripts/run_rada_bulk_batch.sh
 ```
 
+To continue automatically until the Rada catalog is exhausted, use the loop runner after confirming no manual batch is running:
+
+```bash
+cd /home/oleksii/Agent_Jurist
+nohup bash scripts/run_rada_bulk_until_complete.sh > logs/rada_bulk_until_complete.log 2>&1 &
+```
+
+The loop runner executes one foreground Docker batch at a time, rebuilds `legal_sources/priority_manifest.csv` after every successful batch, and stops when a batch returns `pages_this_run=0` and `documents_this_run=0`. It also stops on transient catalog fetch failures such as repeated `403` so the operator can resume later without corrupting state. Useful controls:
+
+```bash
+MAX_BATCHES=3 bash scripts/run_rada_bulk_until_complete.sh
+LIMIT_PAGES=10 PAUSE_BETWEEN_BATCHES=30 bash scripts/run_rada_bulk_until_complete.sh
+```
+
 Check progress:
 
 ```bash
