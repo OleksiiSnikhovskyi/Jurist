@@ -1,6 +1,7 @@
-from pathlib import Path
+import inspect
 import shutil
 from collections.abc import Generator
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -26,12 +27,16 @@ def backfill_dir() -> Generator[Path, None, None]:
         shutil.rmtree(path, ignore_errors=True)
 
 
-def test_build_catalog_page_url_uses_rada_offsets() -> None:
+def test_build_catalog_page_url_uses_rada_page_numbers() -> None:
     base_url = "https://zakon.rada.gov.ua/laws/main/a/page"
 
     assert build_catalog_page_url(base_url, 1) == base_url
     assert build_catalog_page_url(base_url, 51) == f"{base_url}51"
     assert build_catalog_page_url(f"{base_url}/", 101) == f"{base_url}101"
+
+
+def test_backfill_uses_sequential_rada_page_numbers_by_default() -> None:
+    assert inspect.signature(run_backfill).parameters["page_size"].default == 1
 
 
 def test_filter_manifest_rows_defaults_to_current_only() -> None:

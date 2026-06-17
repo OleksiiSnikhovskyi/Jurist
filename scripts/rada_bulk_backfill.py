@@ -58,7 +58,12 @@ def main() -> None:
     parser.add_argument("--user-id", default=os.getenv("JUR_KB_USER_ID", DEFAULT_USER_ID))
     parser.add_argument("--user-email", default=os.getenv("JUR_KB_USER_EMAIL", "jurist@example.local"))
     parser.add_argument("--user-name", default=os.getenv("JUR_KB_USER_NAME", "JUR Knowledge Curator"))
-    parser.add_argument("--page-size", type=int, default=50)
+    parser.add_argument(
+        "--page-size",
+        type=int,
+        default=1,
+        help="Rada catalog page increment. zakon.rada.gov.ua uses sequential page numbers.",
+    )
     parser.add_argument("--limit-pages", type=int)
     parser.add_argument("--limit-documents", type=int)
     parser.add_argument("--sleep-seconds", type=float, default=0.5)
@@ -111,7 +116,7 @@ def run_backfill(
     user_id: str,
     user_email: str,
     user_name: str,
-    page_size: int = 50,
+    page_size: int = 1,
     limit_pages: int | None = None,
     limit_documents: int | None = None,
     sleep_seconds: float = 0.5,
