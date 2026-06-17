@@ -669,6 +669,101 @@ def test_start_package_processing_can_return_ollama_answer(
     assert package.metadata_json["llm_model"] == "fake-qwen"
 
 
+def test_attach_extracted_text_indexes_telegram_attachment(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    package = N8nIntakePackage(
+        id="package-extract",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        status="pending",
+    )
+    item = N8nIntakeItem(
+        id="item-extract",
+        package_id="package-extract",
+        item_type="document",
+        external_file_id="telegram-file-1",
+        file_name="contract.pdf",
+        mime_type="application/pdf",
+    )
+    db_session.add(package)
+    db_session.add(item)
+    db_session.commit()
+
+    response = client.post(
+        "/n8n/intake/extracted-text",
+        json={
+            "package_id": "package-extract",
+            "external_file_id": "telegram-file-1",
+            "extracted_text": "Текст договору поставки. Прострочення оплати 10 днів.",
+            "extraction_method": "linguistproai.text_extract",
+            "document_type": "telegram_pdf",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["item_id"] == "item-extract"
+    assert payload["chunk_count"] == 1
+    db_session.refresh(item)
+    assert "Прострочення оплати" in item.text
+    document = db_session.get(Document, payload["document_id"])
+    assert document is not None
+    assert document.file_path == "telegram://document/telegram-file-1"
+    assert document.document_type == "telegram_pdf"
+    assert db_session.query(DocumentChunk).filter_by(document_id=document.id).count() == 1
+
+
+def test_start_package_processing_uses_extracted_attachment_text(
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    package = N8nIntakePackage(
+        id="package-attachment-llm",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        status="queued",
+        question="Проаналізуй документ",
+    )
+    db_session.add(package)
+    db_session.add(
+        N8nIntakeItem(
+            package_id="package-attachment-llm",
+            item_type="document",
+            external_file_id="telegram-file-2",
+            file_name="contract.pdf",
+            text="Витягнутий текст договору з ризиком штрафу.",
+        )
+    )
+    db_session.commit()
+    fake_llm = FakeLegalAnalysisService()
+
+    response = N8nIntegrationService(
+        db_session,
+        legal_analysis_service=fake_llm,
+    ).start_package_processing(
+        request=N8nProcessPackageRequest(
+            package_id="package-attachment-llm",
+            requested_agent="contract_review",
+            question="Проаналізуй документ",
+        )
+    )
+
+    assert response.status == "processed"
+    assert fake_llm.command is not None
+    assert "[document]" in fake_llm.command.package_text
+    assert "ризиком штрафу" in fake_llm.command.package_text
+
+
 def test_telegram_start_processing_returns_ollama_answer(
     client: TestClient,
     db_session: Session,

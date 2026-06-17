@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.n8n_schema import (
+    N8nExtractedTextRequest,
+    N8nExtractedTextResponse,
     N8nIntakeResponse,
     N8nLegalSourceUpsertRequest,
     N8nLegalSourceUpsertResponse,
@@ -16,6 +18,7 @@ from app.schemas.n8n_schema import (
 )
 from app.services.access_control import AccessDeniedError
 from app.services.n8n_integration_service import (
+    IntakeItemNotFoundError,
     IntakePackageNotFoundError,
     LegalSourceValidationError,
     N8nIntegrationService,
@@ -55,6 +58,19 @@ def start_package_processing(
     try:
         return N8nIntegrationService(db).start_package_processing(request)
     except IntakePackageNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/intake/extracted-text", response_model=N8nExtractedTextResponse)
+def attach_extracted_text(
+    request: N8nExtractedTextRequest,
+    db: Session = Depends(get_db),
+) -> N8nExtractedTextResponse:
+    try:
+        return N8nIntegrationService(db).attach_extracted_text(request)
+    except (IntakeItemNotFoundError, IntakePackageNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AccessDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc

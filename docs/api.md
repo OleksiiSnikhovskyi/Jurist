@@ -147,6 +147,24 @@ Telegram client-profile actions:
 
 The selected client profile is stored in Telegram binding metadata as `active_client_profile_id`. When the user presses `Почати обробку`, this ID is copied to the intake package metadata as `client_profile_id`.
 
+`POST /n8n/intake/extracted-text`
+
+Attaches OCR/document extraction or voice transcription output to a pending Telegram intake item and indexes it as a private workspace document. This is the integration point for LinguistProAi extraction workflows and existing Telegram voice transcription workflows.
+
+```json
+{
+  "package_id": "uuid",
+  "external_file_id": "telegram-file-id",
+  "extracted_text": "Recognized document or voice transcript text",
+  "file_name": "contract.pdf",
+  "mime_type": "application/pdf",
+  "extraction_method": "linguistproai.ocr_extract",
+  "document_type": "telegram_pdf"
+}
+```
+
+`item_id` may be sent instead of `external_file_id` when n8n already knows the database item ID. The endpoint updates the matching intake item, creates or updates a `telegram://...` document, rebuilds chunks, and leaves the package ready for explicit `Почати обробку`.
+
 ### `POST /n8n/legal-sources/upsert`
 
 Stores or updates one official legal source from `zakon.rada.gov.ua`, creates/updates the corresponding workspace document, and rebuilds chunks for later pgvector search.

@@ -79,6 +79,31 @@ class N8nProcessPackageResponse(BaseModel):
     answer: str | None = None
 
 
+class N8nExtractedTextRequest(BaseModel):
+    package_id: str
+    extracted_text: str = Field(min_length=1)
+    item_id: str | None = None
+    external_file_id: str | None = None
+    workspace_id: str | None = None
+    user_id: str | None = None
+    file_name: str | None = None
+    mime_type: str | None = None
+    extraction_method: str = "external"
+    document_type: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    chunk_size: int = 1200
+    overlap: int = 150
+
+
+class N8nExtractedTextResponse(BaseModel):
+    ok: bool
+    package_id: str
+    item_id: str
+    document_id: str
+    chunk_count: int
+    message: str
+
+
 class N8nObsidianNoteRequest(BaseModel):
     workspace_id: str
     user_id: str

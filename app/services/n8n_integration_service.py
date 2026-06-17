@@ -11,6 +11,8 @@ from app.models.legal_source import LegalSource
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
 from app.repositories.document_repository import DocumentRepository
 from app.schemas.n8n_schema import (
+    N8nExtractedTextRequest,
+    N8nExtractedTextResponse,
     N8nIntakeResponse,
     N8nLegalSourceUpsertRequest,
     N8nLegalSourceUpsertResponse,
@@ -40,6 +42,10 @@ class IntakePackageNotFoundError(Exception):
 
 
 class LegalSourceValidationError(Exception):
+    pass
+
+
+class IntakeItemNotFoundError(Exception):
     pass
 
 
@@ -257,6 +263,87 @@ class N8nIntegrationService:
             answer=answer if package.status == "processed" else None,
         )
 
+    def attach_extracted_text(
+        self,
+        request: N8nExtractedTextRequest,
+    ) -> N8nExtractedTextResponse:
+        package = self.db.get(N8nIntakePackage, request.package_id)
+        if package is None:
+            raise IntakePackageNotFoundError("Intake package not found")
+
+        workspace_id = request.workspace_id or package.workspace_id
+        user_id = request.user_id or package.user_id
+        if not workspace_id or not user_id:
+            raise IntakePackageNotFoundError("Package has no workspace/user binding")
+
+        self.access_control.require_permission(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            permission=WorkspacePermission.WRITE_DOCUMENTS,
+        )
+        item = self._find_intake_item_for_extraction(request)
+        if item is None or item.package_id != package.id:
+            raise IntakeItemNotFoundError("Intake item not found for extracted text")
+
+        clean_text = request.extracted_text.strip()
+        item.text = clean_text
+        item.file_name = request.file_name or item.file_name
+        item.mime_type = request.mime_type or item.mime_type
+        item.metadata_json = {
+            **(item.metadata_json or {}),
+            **request.metadata,
+            "extraction_method": request.extraction_method,
+            "extracted_at": datetime.now(UTC).isoformat(),
+            "extracted_text_length": len(clean_text),
+        }
+
+        document = self._upsert_extracted_document(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            item=item,
+            text=clean_text,
+            document_type=request.document_type,
+        )
+        chunks = split_text(clean_text, chunk_size=request.chunk_size, overlap=request.overlap)
+        self.document_repository.delete_chunks_for_document(document.id)
+        persisted_chunks = self.document_repository.create_document_chunks(
+            document_id=document.id,
+            workspace_id=workspace_id,
+            chunks=chunks,
+        )
+
+        package.status = "pending"
+        package.metadata_json = {
+            **(package.metadata_json or {}),
+            "last_extracted_item_id": item.id,
+            "last_extracted_document_id": document.id,
+        }
+        self.audit_log_service.record(
+            AuditLogCommand(
+                action="n8n.intake_extracted_text_attached",
+                user_id=user_id,
+                workspace_id=workspace_id,
+                object_type="n8n_intake_item",
+                object_id=item.id,
+                metadata={
+                    "package_id": package.id,
+                    "document_id": document.id,
+                    "extraction_method": request.extraction_method,
+                    "chunk_count": len(persisted_chunks),
+                },
+            ),
+            commit=False,
+        )
+        self.db.commit()
+        return N8nExtractedTextResponse(
+            ok=True,
+            package_id=package.id,
+            item_id=item.id,
+            document_id=document.id,
+            chunk_count=len(persisted_chunks),
+            message="Extracted text attached and indexed.",
+        )
+
     def _try_process_package_with_llm(
         self,
         *,
@@ -313,9 +400,9 @@ class N8nIntegrationService:
             .all()
         )
         text_parts = [
-            f"- {item.text.strip()}"
+            f"- [{item.item_type}] {item.text.strip()}"
             for item in items
-            if item.item_type == "text" and item.text and item.text.strip()
+            if item.text and item.text.strip()
         ]
         attachment_notes = [
             self._format_attachment_note(item)
@@ -373,6 +460,57 @@ class N8nIntegrationService:
             source_fragments=source_fragments,
             attachment_notes=attachment_notes,
         )
+
+    def _find_intake_item_for_extraction(
+        self,
+        request: N8nExtractedTextRequest,
+    ) -> N8nIntakeItem | None:
+        if request.item_id:
+            return self.db.get(N8nIntakeItem, request.item_id)
+        query = self.db.query(N8nIntakeItem).filter(N8nIntakeItem.package_id == request.package_id)
+        if request.external_file_id:
+            query = query.filter(N8nIntakeItem.external_file_id == request.external_file_id)
+        return query.order_by(N8nIntakeItem.created_at.desc()).first()
+
+    def _upsert_extracted_document(
+        self,
+        *,
+        workspace_id: str,
+        user_id: str,
+        item: N8nIntakeItem,
+        text: str,
+        document_type: str | None,
+    ) -> Document:
+        file_key = item.external_file_id or item.id
+        file_path = f"telegram://{item.item_type}/{file_key}"
+        document = (
+            self.db.query(Document)
+            .filter(
+                Document.workspace_id == workspace_id,
+                Document.file_path == file_path,
+            )
+            .one_or_none()
+        )
+        document_name = item.file_name or f"{item.item_type}-{item.id}"
+        resolved_document_type = document_type or f"telegram_{item.item_type}"
+        if document is None:
+            return self.document_repository.create_document(
+                workspace_id=workspace_id,
+                uploaded_by=user_id,
+                document_name=document_name[:500],
+                document_type=resolved_document_type,
+                file_path=file_path,
+                confidentiality_level="private",
+                extracted_text=text,
+            )
+
+        document.uploaded_by = user_id
+        document.document_name = document_name[:500]
+        document.document_type = resolved_document_type
+        document.extracted_text = text
+        self.db.add(document)
+        self.db.flush()
+        return document
 
     def _format_attachment_note(self, item: N8nIntakeItem) -> str:
         parts = [

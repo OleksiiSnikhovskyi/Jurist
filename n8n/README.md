@@ -54,6 +54,16 @@ Recommended workflow split:
 - `JUR_Document_Processing_Start`: runs only after the `Почати обробку` action and sends the queued package to FastAPI.
 - `JUR_Document_Ingestion`: extracts text from PDFs, DOCX, Excel files, scans, photos, and voice transcripts, then stores document metadata and chunks.
 
+For document extraction, reuse the existing LinguistProAi internal service where possible:
+
+- `http://linguistproai-internal-ai:8011/internal/v2/parse-document`
+- `http://linguistproai-internal-ai:8011/internal/v2/segment-document`
+- legacy helpers: `/internal/text-extract` and `/internal/ocr-extract`
+
+For voice messages, reuse the existing Telegram voice pattern from LiveCalendar: Telegram download voice file -> audio transcription -> send the transcript to Jurist as extracted text.
+
+After any OCR/text extraction/transcription step, call `POST /n8n/intake/extracted-text` with `package_id`, `external_file_id` or `item_id`, and `extracted_text`. FastAPI updates the matching intake item, creates/updates a private workspace document, rebuilds chunks, and then `Почати обробку` can include that text in the Qwen legal analysis.
+
 The workflow must keep a clear package/session ID so that multiple uploads from one user can be processed together. If a user sends files without pressing `Почати обробку`, the system should acknowledge receipt and wait.
 
 ## Obsidian Requirements
@@ -82,6 +92,7 @@ Important rules:
 The first workflow templates target these backend integration endpoints:
 
 - `POST /n8n/intake/telegram`: receives normalized Telegram events and updates the pending package.
+- `POST /n8n/intake/extracted-text`: attaches OCR/document/voice transcript text to a queued intake item and indexes it.
 - `POST /n8n/intake/process`: starts explicit package processing after `Почати обробку`.
 - `POST /n8n/obsidian/sync-note`: ingests one normalized Obsidian note into workspace-scoped search.
 
