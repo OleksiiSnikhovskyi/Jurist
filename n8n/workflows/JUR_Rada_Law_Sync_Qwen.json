@@ -137,7 +137,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{($env.JUR_OLLAMA_BASE_URL || 'http://172.18.0.1:11434') + '/api/chat'}}",
+        "url": "={{($env.JUR_OLLAMA_BASE_URL || 'http://100.100.209.24:11434') + '/api/chat'}}",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{$json.ollama_request}}",
