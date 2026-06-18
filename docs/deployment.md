@@ -168,7 +168,7 @@ cd /home/oleksii/Agent_Jurist
 nohup bash scripts/run_rada_bulk_until_complete.sh > logs/rada_bulk_until_complete.log 2>&1 &
 ```
 
-The loop runner executes one foreground Docker batch at a time, rebuilds `legal_sources/priority_manifest.csv` after every successful batch, and stops when a batch returns `pages_this_run=0` and `documents_this_run=0`. It also stops on transient catalog fetch failures such as repeated `403` so the operator can resume later without corrupting state. Useful controls:
+The loop runner executes one foreground Docker batch at a time, repairs missing official HTML files referenced by the cumulative manifest, rebuilds `legal_sources/priority_manifest.csv` after every successful batch, and stops when a batch returns `pages_this_run=0` and `documents_this_run=0`. It also stops on transient catalog fetch failures such as repeated `403` so the operator can resume later without corrupting state. Useful controls:
 
 ```bash
 MAX_BATCHES=3 bash scripts/run_rada_bulk_until_complete.sh
@@ -193,6 +193,20 @@ python scripts/build_production_priority_manifest.py \
 ```
 
 The builder validates official source policy, deduplicates rows, and writes only rows whose `file_path` exists under `legal_sources/`. If any rows have validation issues or missing files, it still writes the filtered manifest and summary, then exits non-zero so the operator can review the gap before treating the corpus as complete.
+
+If a manifest build reports missing files after a manual batch, repair them from official URLs and rebuild:
+
+```bash
+python3 scripts/repair_missing_legal_source_files.py \
+  --manifest legal_sources/rada_bulk_manifest.csv \
+  --documents-dir legal_sources
+
+python3 scripts/build_production_priority_manifest.py \
+  legal_sources/rada_bulk_manifest.csv \
+  --output legal_sources/priority_manifest.csv \
+  --documents-dir legal_sources \
+  --summary legal_sources/priority_manifest.summary.json
+```
 
 The priority manifest keeps only records that can be tied to official sources and later loaded into PostgreSQL/pgvector. Use this source taxonomy:
 
