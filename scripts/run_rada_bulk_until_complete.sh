@@ -67,10 +67,15 @@ while true; do
   fi
 
   echo "Building production priority_manifest.csv"
-  python3 scripts/repair_missing_legal_source_files.py \
-    --manifest legal_sources/rada_bulk_manifest.csv \
-    --documents-dir legal_sources \
-    --sleep-seconds "${SLEEP_SECONDS}"
+  docker run --rm \
+    --network agent_jurist_jur_internal \
+    -v "${PROJECT_DIR}:/work" \
+    -w /work \
+    agent_jurist_agent-jurist-api:latest \
+    python scripts/repair_missing_legal_source_files.py \
+      --manifest legal_sources/rada_bulk_manifest.csv \
+      --documents-dir legal_sources \
+      --sleep-seconds "${SLEEP_SECONDS}"
 
   python3 scripts/build_production_priority_manifest.py \
     legal_sources/rada_bulk_manifest.csv \
