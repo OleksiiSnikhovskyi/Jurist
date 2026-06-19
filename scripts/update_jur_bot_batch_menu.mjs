@@ -120,4 +120,38 @@ workflow.connections["Route Batch Reply Menu"] = {
   ],
 };
 
+if (!findNode("Build Auto Analysis Reply")) {
+  workflow.nodes.push({
+    parameters: {
+      mode: "runOnceForAllItems",
+      jsCode:
+        "const result = $input.first().json || {};\nconst event = $('Normalize Telegram Update').first().json || {};\nif (!result.answer) {\n  return [];\n}\nreturn [{ json: { chat_id: event.chat_id, reply_text: result.answer } }];",
+    },
+    id: "jur-build-auto-analysis-reply",
+    name: "Build Auto Analysis Reply",
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position: [1680, 260],
+  });
+}
+
+if (!findNode("Telegram Auto Analysis Reply")) {
+  const autoReplyNode = JSON.parse(JSON.stringify(mainReplyNode));
+  autoReplyNode.id = "jur-telegram-auto-analysis-reply";
+  autoReplyNode.name = "Telegram Auto Analysis Reply";
+  autoReplyNode.position = [1920, 260];
+  autoReplyNode.parameters.text = "={{$json.reply_text || 'Аналіз завершено.'}}";
+  workflow.nodes.push(autoReplyNode);
+}
+
+workflow.connections["Attach Document Extracted Text To API"] = {
+  main: [[{ node: "Build Auto Analysis Reply", type: "main", index: 0 }]],
+};
+workflow.connections["Attach Voice Extracted Text To API"] = {
+  main: [[{ node: "Build Auto Analysis Reply", type: "main", index: 0 }]],
+};
+workflow.connections["Build Auto Analysis Reply"] = {
+  main: [[{ node: "Telegram Auto Analysis Reply", type: "main", index: 0 }]],
+};
+
 fs.writeFileSync(workflowPath, `${JSON.stringify(workflow, null, 2)}\n`);
