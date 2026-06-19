@@ -102,6 +102,8 @@ class N8nExtractedTextResponse(BaseModel):
     document_id: str
     chunk_count: int
     message: str
+    status: str | None = None
+    answer: str | None = None
 
 
 class N8nObsidianNoteRequest(BaseModel):

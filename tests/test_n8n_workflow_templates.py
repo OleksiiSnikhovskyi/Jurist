@@ -24,6 +24,7 @@ def test_telegram_intake_template_has_required_actions() -> None:
     workflow_text = json.dumps(workflow, ensure_ascii=False)
 
     for button_text in [
+        "Пакетна обробка",
         "Додати фото або документ",
         "Додати голосове повідомлення",
         "Показати додані матеріали",
@@ -42,6 +43,8 @@ def test_telegram_intake_template_has_required_actions() -> None:
         "Назад",
     ]:
         assert button_text in workflow_text
+    assert "batch_processing_menu" in workflow_text
+    assert "Telegram Batch Menu Reply" in workflow_text
 
 
 def test_obsidian_template_uses_batch_processing() -> None:

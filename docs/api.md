@@ -139,13 +139,22 @@ Telegram client-profile actions:
 
 - `Клієнти`: opens the client-profile submenu and shows the active client if one is selected. Free text in this menu is ignored until a client action button is chosen.
 - `Новий клієнт` / `Створити профіль клієнта`: starts a step-by-step client profile dialog.
-- `Обрати клієнта`: lists recent workspace client profiles and waits for the exact client name.
+- `Обрати клієнта`: lists recent workspace client profiles as `1. Назва клієнта` and waits for the numeric choice.
 - `Показати активного клієнта`: shows the currently selected client context.
 - `Налаштування клієнта` / `Змінити профіль клієнта`: shows the active client profile and starts an edit dialog for that same profile.
-- `Видалити клієнта`: lists profiles and waits for the exact client name to delete. If the deleted profile was active, the active selection is cleared.
+- `Видалити клієнта`: lists profiles as `1. Назва клієнта` and waits for the numeric choice to delete. If the deleted profile was active, the active selection is cleared.
 - `Назад`: returns to the main menu and cancels an incomplete client-profile dialog.
 
-The selected client profile is stored in Telegram binding metadata as `active_client_profile_id`. When the user presses `Почати обробку`, this ID is copied to the intake package metadata as `client_profile_id`.
+The selected client profile is stored in Telegram binding metadata as `active_client_profile_id`. When the user presses `Почати обробку`, or when `/n8n/intake/process` starts without an explicit `client_profile_id`, this ID is copied to the intake package metadata as `client_profile_id`.
+
+Telegram package-processing actions:
+
+- `Пакетна обробка`: switches Telegram binding metadata to package mode and returns the package submenu.
+- `Додати фото або документ` / `Додати голосове повідомлення`: in package mode, adds material to the current package and waits for `Почати обробку`.
+- `Показати додані матеріали`, `Очистити пакет`, `Статус обробки`, `Почати обробку`: operate on the current package.
+- `Назад`: returns to the main menu and leaves package mode.
+
+Outside package mode, a normal text question is analyzed immediately. A single photo/document/voice message outside package mode is marked with `auto_process_after_extraction`; after OCR, parsing, or transcription calls `/n8n/intake/extracted-text`, FastAPI starts legal analysis automatically with the active client profile.
 
 `POST /n8n/intake/extracted-text`
 
@@ -163,7 +172,7 @@ Attaches OCR/document extraction or voice transcription output to a pending Tele
 }
 ```
 
-`item_id` may be sent instead of `external_file_id` when n8n already knows the database item ID. The endpoint updates the matching intake item, creates or updates a `telegram://...` document, rebuilds chunks, and leaves the package ready for explicit `Почати обробку`.
+`item_id` may be sent instead of `external_file_id` when n8n already knows the database item ID. The endpoint updates the matching intake item, creates or updates a `telegram://...` document, rebuilds chunks, and leaves the package ready for explicit `Почати обробку`. If package metadata contains `auto_process_after_extraction=true`, the endpoint starts analysis immediately after indexing and may return `status` and `answer`.
 
 ### `POST /n8n/legal-sources/upsert`
 

@@ -97,17 +97,25 @@ class N8nIntegrationService:
         if client_profile_response is not None:
             return client_profile_response
 
+        batch_menu_response = self._handle_batch_menu_navigation(event)
+        if batch_menu_response is not None:
+            return batch_menu_response
+
+        batch_mode = self._telegram_intake_mode(event) == "batch"
         package = self._get_or_create_pending_package(event)
+        reply_menu = "batch" if batch_mode else "main"
 
         if event.action == "clear_package":
             package.status = "cleared"
             reply_text = "Поточний пакет очищено. Можна додати нові матеріали."
+            reply_menu = "batch"
         elif event.action == "list_materials":
             counts = self._count_items(package.id)
             reply_text = (
                 f"У пакеті матеріалів: {counts.total}. "
                 f"Файлів/медіа: {counts.attachments}, текстових повідомлень: {counts.text_messages}."
             )
+            reply_menu = "batch"
         elif event.action == "start_processing":
             package.status = "queued"
             package.requested_agent = event.requested_agent or "orchestrator"
@@ -119,13 +127,39 @@ class N8nIntegrationService:
                 workspace_id=event.workspace_id,
                 user_id=event.user_id,
             )
+            reply_menu = "batch"
         else:
             added_count = self._append_event_items(package, event)
-            reply_text = (
-                f"Додано матеріалів: {added_count}. Натисніть 'Почати обробку', коли пакет буде повним."
-                if added_count
-                else "Команду отримано. Додайте фото, документ або голосове повідомлення."
-            )
+            if batch_mode:
+                reply_text = (
+                    f"Додано матеріалів: {added_count}. Натисніть 'Почати обробку', коли пакет буде повним."
+                    if added_count
+                    else "Команду отримано. Додайте фото, документ або голосове повідомлення до пакета."
+                )
+            elif added_count and event.attachments:
+                package.status = "waiting_for_text_extraction"
+                package.requested_agent = event.requested_agent or "orchestrator"
+                package.question = event.question or event.text or "Проаналізуй надісланий документ."
+                self._attach_active_client_profile(package, event)
+                metadata = dict(package.metadata_json or {})
+                metadata["auto_process_after_extraction"] = True
+                package.metadata_json = metadata
+                reply_text = (
+                    "Документ або голосове повідомлення отримано. Після розпізнавання тексту "
+                    "система автоматично запустить аналіз з активним профілем клієнта."
+                )
+            elif added_count:
+                package.status = "queued"
+                package.requested_agent = event.requested_agent or "orchestrator"
+                package.question = event.question or event.text
+                self._attach_active_client_profile(package, event)
+                reply_text = self._try_process_package_with_llm(
+                    package=package,
+                    workspace_id=event.workspace_id,
+                    user_id=event.user_id,
+                )
+            else:
+                reply_text = "Команду отримано. Для комплекту документів відкрийте 'Пакетна обробка'."
 
         self.audit_log_service.record(
             AuditLogCommand(
@@ -152,6 +186,7 @@ class N8nIntegrationService:
             status=package.status,
             item_count=counts.total,
             reply_text=reply_text,
+            reply_menu=reply_menu,
         )
 
     def upsert_telegram_binding(
@@ -233,6 +268,10 @@ class N8nIntegrationService:
         metadata = dict(package.metadata_json or {})
         if request.client_profile_id:
             metadata["client_profile_id"] = request.client_profile_id
+        elif "client_profile_id" not in metadata:
+            active_client_profile_id = self._active_client_profile_id_for_package(package)
+            if active_client_profile_id:
+                metadata["client_profile_id"] = active_client_profile_id
         package.metadata_json = metadata
         answer = self._try_process_package_with_llm(
             package=package,
@@ -313,11 +352,22 @@ class N8nIntegrationService:
         )
 
         package.status = "pending"
-        package.metadata_json = {
+        package_metadata = {
             **(package.metadata_json or {}),
             "last_extracted_item_id": item.id,
             "last_extracted_document_id": document.id,
         }
+        package.metadata_json = package_metadata
+        answer = None
+        if package_metadata.get("auto_process_after_extraction"):
+            package_metadata.pop("auto_process_after_extraction", None)
+            package.metadata_json = package_metadata
+            package.status = "queued"
+            answer = self._try_process_package_with_llm(
+                package=package,
+                workspace_id=workspace_id,
+                user_id=user_id,
+            )
         self.audit_log_service.record(
             AuditLogCommand(
                 action="n8n.intake_extracted_text_attached",
@@ -341,7 +391,9 @@ class N8nIntegrationService:
             item_id=item.id,
             document_id=document.id,
             chunk_count=len(persisted_chunks),
-            message="Extracted text attached and indexed.",
+            message=answer or "Extracted text attached and indexed.",
+            status=package.status,
+            answer=answer if package.status == "processed" else None,
         )
 
     def _try_process_package_with_llm(
@@ -699,6 +751,11 @@ class N8nIntegrationService:
                 metadata.pop("onboarding_state", None)
                 metadata.pop("client_profile_draft", None)
                 metadata.pop("client_profile_edit_id", None)
+                metadata.pop("client_profile_selection", None)
+                binding.metadata_json = metadata
+                self.db.commit()
+            elif metadata.get("intake_mode") == "batch":
+                metadata.pop("intake_mode", None)
                 binding.metadata_json = metadata
                 self.db.commit()
             return N8nIntakeResponse(
@@ -777,16 +834,17 @@ class N8nIntegrationService:
                     reply_text="Профілі клієнтів ще не створені. Немає що видаляти.",
                 )
             metadata["onboarding_state"] = "awaiting_client_delete_selection"
+            metadata["client_profile_selection"] = self._client_profile_selection(profiles)
             metadata.pop("client_profile_draft", None)
             metadata.pop("client_profile_edit_id", None)
             binding.metadata_json = metadata
             self.db.commit()
-            names = "\n".join(f"- {profile.display_name}" for profile in profiles[:10])
+            names = self._format_numbered_client_profiles(profiles)
             return N8nIntakeResponse(
                 ok=True,
                 reply_menu="client",
                 reply_text=(
-                    "Напишіть точну назву клієнта, якого потрібно видалити:\n"
+                    "Надішліть номер клієнта, якого потрібно видалити:\n"
                     f"{names}\n\n"
                     "Щоб скасувати, натисніть 'Назад'."
                 ),
@@ -801,13 +859,14 @@ class N8nIntegrationService:
                     reply_text="Профілі клієнтів ще не створені. Натисніть 'Створити профіль клієнта'.",
                 )
             metadata["onboarding_state"] = "awaiting_client_selection"
+            metadata["client_profile_selection"] = self._client_profile_selection(profiles)
             binding.metadata_json = metadata
             self.db.commit()
-            names = "\n".join(f"- {profile.display_name}" for profile in profiles[:10])
+            names = self._format_numbered_client_profiles(profiles)
             return N8nIntakeResponse(
                 ok=True,
                 reply_menu="client",
-                reply_text=f"Напишіть назву клієнта зі списку:\n{names}",
+                reply_text=f"Надішліть номер клієнта зі списку:\n{names}",
             )
 
         if onboarding_state == "client_menu" and event.action == "free_text":
@@ -826,17 +885,22 @@ class N8nIntegrationService:
             and event.action == "free_text"
             and event.text
         ):
-            profile = self._find_client_profile_by_name(event.workspace_id, event.text)
+            profile = self._find_client_profile_by_selection(
+                workspace_id=event.workspace_id,
+                selection_text=event.text,
+                metadata=metadata,
+            )
             if profile is None:
                 return N8nIntakeResponse(
                     ok=True,
                     reply_menu="client",
-                    reply_text="Не знайшов такого клієнта. Надішліть назву точно зі списку або натисніть 'Назад'.",
+                    reply_text="Не знайшов такого номера. Надішліть номер зі списку або натисніть 'Назад'.",
                 )
             active_client_profile_id = metadata.get("active_client_profile_id")
             if active_client_profile_id == profile.id:
                 metadata.pop("active_client_profile_id", None)
             metadata.pop("onboarding_state", None)
+            metadata.pop("client_profile_selection", None)
             binding.metadata_json = metadata
             self._record_client_profile_update(event, profile.id, "deleted")
             self.db.delete(profile)
@@ -860,15 +924,20 @@ class N8nIntegrationService:
             )
 
         if onboarding_state == "awaiting_client_selection" and event.action == "free_text" and event.text:
-            profile = self._find_client_profile_by_name(event.workspace_id, event.text)
+            profile = self._find_client_profile_by_selection(
+                workspace_id=event.workspace_id,
+                selection_text=event.text,
+                metadata=metadata,
+            )
             if profile is None:
                 return N8nIntakeResponse(
                     ok=True,
                     reply_menu="client",
-                    reply_text="Не знайшов такого клієнта. Надішліть назву точно зі списку або створіть новий профіль.",
+                    reply_text="Не знайшов такого номера. Надішліть номер зі списку або створіть новий профіль.",
                 )
             metadata["active_client_profile_id"] = profile.id
             metadata.pop("onboarding_state", None)
+            metadata.pop("client_profile_selection", None)
             binding.metadata_json = metadata
             self.db.commit()
             return N8nIntakeResponse(
@@ -964,6 +1033,37 @@ class N8nIntegrationService:
 
         return None
 
+    def _handle_batch_menu_navigation(self, event: TelegramIntakeEvent) -> N8nIntakeResponse | None:
+        binding = self._get_active_binding(event.telegram_user_id)
+        if binding is None:
+            return None
+        metadata = dict(binding.metadata_json or {})
+        if event.action != "batch_processing_menu":
+            return None
+
+        metadata["intake_mode"] = "batch"
+        metadata.pop("onboarding_state", None)
+        metadata.pop("client_profile_draft", None)
+        metadata.pop("client_profile_edit_id", None)
+        metadata.pop("client_profile_selection", None)
+        binding.metadata_json = metadata
+        self.db.commit()
+        return N8nIntakeResponse(
+            ok=True,
+            reply_menu="batch",
+            reply_text=(
+                "Пакетна обробка увімкнена. Додайте всі фото, документи або голосові повідомлення, "
+                "а потім натисніть 'Почати обробку'."
+            ),
+        )
+
+    def _telegram_intake_mode(self, event: TelegramIntakeEvent) -> str | None:
+        binding = self._get_active_binding(event.telegram_user_id)
+        if binding is None:
+            return None
+        metadata = dict(binding.metadata_json or {})
+        return metadata.get("intake_mode")
+
     def _create_client_profile_from_draft(
         self,
         event: TelegramIntakeEvent,
@@ -1015,6 +1115,44 @@ class N8nIntegrationService:
             .all()
         )
 
+    def _client_profile_selection(self, profiles: list[ClientProfile]) -> list[dict[str, str]]:
+        return [
+            {"number": str(index), "id": profile.id, "display_name": profile.display_name}
+            for index, profile in enumerate(profiles[:10], start=1)
+        ]
+
+    def _format_numbered_client_profiles(self, profiles: list[ClientProfile]) -> str:
+        return "\n".join(
+            f"{index}. {profile.display_name}"
+            for index, profile in enumerate(profiles[:10], start=1)
+        )
+
+    def _find_client_profile_by_selection(
+        self,
+        *,
+        workspace_id: str | None,
+        selection_text: str,
+        metadata: dict,
+    ) -> ClientProfile | None:
+        clean_selection = selection_text.strip()
+        selected_id = None
+        if clean_selection.isdecimal():
+            for item in metadata.get("client_profile_selection") or []:
+                if str(item.get("number")) == clean_selection:
+                    selected_id = item.get("id")
+                    break
+            if selected_id is None:
+                profiles = self._list_client_profiles(workspace_id)
+                index = int(clean_selection) - 1
+                if 0 <= index < min(len(profiles), 10):
+                    selected_id = profiles[index].id
+            if selected_id:
+                profile = self.db.get(ClientProfile, selected_id)
+                if profile is not None and profile.workspace_id == workspace_id:
+                    return profile
+                return None
+        return self._find_client_profile_by_name(workspace_id, selection_text)
+
     def _find_client_profile_by_name(
         self,
         workspace_id: str | None,
@@ -1061,6 +1199,21 @@ class N8nIntegrationService:
         package_metadata = dict(package.metadata_json or {})
         package_metadata["client_profile_id"] = active_client_profile_id
         package.metadata_json = package_metadata
+
+    def _active_client_profile_id_for_package(self, package: N8nIntakePackage) -> str | None:
+        if not package.external_user_id:
+            return None
+        binding = self._get_active_binding(package.external_user_id)
+        if binding is None:
+            return None
+        metadata = dict(binding.metadata_json or {})
+        active_client_profile_id = metadata.get("active_client_profile_id")
+        if not active_client_profile_id:
+            return None
+        profile = self.db.get(ClientProfile, active_client_profile_id)
+        if profile is None or profile.workspace_id != package.workspace_id:
+            return None
+        return profile.id
 
     def _clear_incomplete_client_profile_draft(self, event: TelegramIntakeEvent) -> None:
         binding = self._get_active_binding(event.telegram_user_id)

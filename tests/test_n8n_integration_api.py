@@ -166,7 +166,7 @@ def test_telegram_intake_creates_pending_package(
     assert response.status_code == 200
     payload = response.json()
     assert payload["ok"] is True
-    assert payload["status"] == "pending"
+    assert payload["status"] == "waiting_for_text_extraction"
     assert payload["item_count"] == 1
     assert db_session.query(N8nIntakePackage).count() == 1
     assert db_session.query(N8nIntakeItem).count() == 1
@@ -421,7 +421,7 @@ def test_start_processing_clears_incomplete_client_profile_draft(
     assert binding.metadata_json == {}
 
 
-def test_telegram_select_client_profile_by_name(
+def test_telegram_select_client_profile_by_number(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -438,9 +438,10 @@ def test_telegram_select_client_profile_by_name(
     _seed_telegram_binding(db_session)
 
     list_payload = _post_telegram_text(client, "Обрати клієнта", "select_client_profile")
+    assert "1. ТОВ Приклад" in list_payload["reply_text"]
     assert "ТОВ Приклад" in list_payload["reply_text"]
 
-    selected_payload = _post_telegram_text(client, "ТОВ Приклад")
+    selected_payload = _post_telegram_text(client, "1")
     assert "Активний клієнт: ТОВ Приклад" in selected_payload["reply_text"]
     binding = db_session.query(N8nTelegramBinding).one()
     assert binding.metadata_json["active_client_profile_id"] == "client-1"
@@ -545,9 +546,10 @@ def test_telegram_delete_active_client_profile_clears_selection(
     _seed_telegram_binding(db_session, metadata={"active_client_profile_id": "client-1"})
 
     list_payload = _post_telegram_text(client, "Видалити клієнта", "delete_client_profile")
+    assert "1. ТОВ Видалити" in list_payload["reply_text"]
     assert "ТОВ Видалити" in list_payload["reply_text"]
 
-    done_payload = _post_telegram_text(client, "ТОВ Видалити")
+    done_payload = _post_telegram_text(client, "1")
 
     assert "видалено" in done_payload["reply_text"]
     assert done_payload["reply_menu"] == "client"
@@ -630,6 +632,53 @@ class FakeLegalAnalysisService:
         return LegalPackageAnalysisResult(answer="LLM відповідь для юриста.", model="fake-qwen")
 
 
+def test_telegram_batch_menu_keeps_materials_pending(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session)
+
+    menu_payload = _post_telegram_text(client, "Пакетна обробка", "batch_processing_menu")
+    assert menu_payload["reply_menu"] == "batch"
+    assert "Пакетна обробка увімкнена" in menu_payload["reply_text"]
+
+    payload = _post_telegram_text(client, "Перший документ стосується договору.")
+
+    assert payload["reply_menu"] == "batch"
+    assert payload["status"] == "pending"
+    assert "Почати обробку" in payload["reply_text"]
+    package = db_session.query(N8nIntakePackage).one()
+    assert package.status == "pending"
+
+
+def test_telegram_free_text_processes_immediately(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session)
+    fake_llm = FakeLegalAnalysisService()
+
+    original_init = N8nIntegrationService.__init__
+
+    def init_with_fake_llm(self: N8nIntegrationService, *args, **kwargs) -> None:
+        kwargs["legal_analysis_service"] = fake_llm
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(N8nIntegrationService, "__init__", init_with_fake_llm)
+
+    payload = _post_telegram_text(client, "Проаналізуй умови договору поставки.")
+
+    assert payload["status"] == "processed"
+    assert payload["reply_text"] == "LLM відповідь для юриста."
+    assert fake_llm.command is not None
+    assert "договору поставки" in fake_llm.command.package_text
+
+
 def test_start_package_processing_can_return_ollama_answer(
     db_session: Session,
 ) -> None:
@@ -667,6 +716,56 @@ def test_start_package_processing_can_return_ollama_answer(
     assert "договір поставки" in fake_llm.command.package_text
     db_session.refresh(package)
     assert package.metadata_json["llm_model"] == "fake-qwen"
+
+
+def test_start_package_processing_uses_active_telegram_client_when_not_explicit(
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    db_session.add(
+        ClientProfile(
+            id="client-1",
+            workspace_id="workspace-1",
+            created_by="user-1",
+            display_name="ТОВ Активний",
+            interests="Захистити покупця.",
+        )
+    )
+    _seed_telegram_binding(db_session, metadata={"active_client_profile_id": "client-1"})
+    package = N8nIntakePackage(
+        id="package-active-client",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        external_user_id="200",
+        status="queued",
+        question="Проаналізуй ризики",
+    )
+    db_session.add(package)
+    db_session.add(N8nIntakeItem(package_id="package-active-client", item_type="text", text="Є спір щодо поставки."))
+    db_session.commit()
+    fake_llm = FakeLegalAnalysisService()
+
+    response = N8nIntegrationService(
+        db_session,
+        legal_analysis_service=fake_llm,
+    ).start_package_processing(
+        request=N8nProcessPackageRequest(
+            package_id="package-active-client",
+            requested_agent="legal_research",
+            question="Проаналізуй ризики",
+        )
+    )
+
+    assert response.status == "processed"
+    assert fake_llm.command is not None
+    assert fake_llm.command.client_context is not None
+    assert "ТОВ Активний" in fake_llm.command.client_context
+    assert "Захистити покупця" in fake_llm.command.client_context
+    db_session.refresh(package)
+    assert package.metadata_json["client_profile_id"] == "client-1"
 
 
 def test_attach_extracted_text_indexes_telegram_attachment(
@@ -718,6 +817,64 @@ def test_attach_extracted_text_indexes_telegram_attachment(
     assert document.file_path == "telegram://document/telegram-file-1"
     assert document.document_type == "telegram_pdf"
     assert db_session.query(DocumentChunk).filter_by(document_id=document.id).count() == 1
+
+
+def test_attach_extracted_text_auto_processes_single_attachment(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    package = N8nIntakePackage(
+        id="package-auto-extract",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        external_user_id="200",
+        status="waiting_for_text_extraction",
+        metadata_json={"auto_process_after_extraction": True},
+        question="Проаналізуй документ",
+    )
+    item = N8nIntakeItem(
+        id="item-auto-extract",
+        package_id="package-auto-extract",
+        item_type="document",
+        external_file_id="telegram-file-auto",
+        file_name="contract.pdf",
+    )
+    db_session.add(package)
+    db_session.add(item)
+    db_session.commit()
+    fake_llm = FakeLegalAnalysisService()
+
+    original_init = N8nIntegrationService.__init__
+
+    def init_with_fake_llm(self: N8nIntegrationService, *args, **kwargs) -> None:
+        kwargs["legal_analysis_service"] = fake_llm
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(N8nIntegrationService, "__init__", init_with_fake_llm)
+
+    response = client.post(
+        "/n8n/intake/extracted-text",
+        json={
+            "package_id": "package-auto-extract",
+            "external_file_id": "telegram-file-auto",
+            "extracted_text": "Текст договору поставки з ризиком штрафу.",
+            "extraction_method": "linguistproai.text_extract",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "processed"
+    assert payload["answer"] == "LLM відповідь для юриста."
+    assert fake_llm.command is not None
+    assert "ризиком штрафу" in fake_llm.command.package_text
+    db_session.refresh(package)
+    assert "auto_process_after_extraction" not in package.metadata_json
 
 
 def test_start_package_processing_uses_extracted_attachment_text(
@@ -782,6 +939,7 @@ def test_telegram_start_processing_returns_ollama_answer(
 
     monkeypatch.setattr(N8nIntegrationService, "__init__", init_with_fake_llm)
 
+    _post_telegram_text(client, "Пакетна обробка", "batch_processing_menu")
     _post_telegram_text(client, "Є договір поставки з простроченням оплати.")
     payload = _post_telegram_text(client, "Почати обробку", "start_processing")
 

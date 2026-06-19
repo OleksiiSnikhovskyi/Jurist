@@ -39,14 +39,21 @@ Supported incoming materials:
 
 Expected bot actions/buttons:
 
-- `Додати фото або документ`: prompts the user to upload one or more files.
-- `Додати голосове повідомлення`: prompts the user to send voice context or instructions.
+- `Пакетна обробка`: opens a dedicated package submenu for multi-document work.
+- `Клієнти`: opens the active-client submenu.
+- `Змінити системний промпт`: updates the lawyer's personal prompt/profile.
+
+Package submenu buttons:
+
+- `Додати фото або документ`: prompts the user to upload one or more package files.
+- `Додати голосове повідомлення`: prompts the user to send package voice context or instructions.
 - `Показати додані матеріали`: lists the pending files/messages in the current intake package.
 - `Видалити матеріал`: lets the user remove a mistaken file before processing.
 - `Очистити пакет`: clears the current pending intake package.
-- `Почати обробку`: explicitly starts extraction, OCR/transcription, indexing, and legal analysis.
+- `Почати обробку`: explicitly starts extraction, OCR/transcription, indexing, and legal analysis for the package.
 - `Статус обробки`: shows whether extraction/indexing/analysis is queued, running, failed, or completed.
 - `Скасувати обробку`: cancels a pending or queued package where possible.
+- `Назад`: returns to the main menu.
 
 Recommended workflow split:
 
@@ -69,9 +76,10 @@ After any OCR/text extraction/transcription step, call `POST /n8n/intake/extract
 - after `/n8n/intake/telegram` returns a `package_id`, attachment metadata is expanded into extraction jobs;
 - document/photo jobs download the Telegram file, send base64 content to `http://linguistproai-internal-ai:8011/internal/v2/parse-document`, collect extracted node text, and call `/n8n/intake/extracted-text`;
 - voice jobs download the Telegram voice file, transcribe audio with the existing OpenAI transcription node pattern, and call `/n8n/intake/extracted-text`;
-- this branch indexes extracted text only. Legal analysis still waits for the explicit `Почати обробку` action.
+- in package mode, this branch indexes extracted text only and legal analysis waits for explicit `Почати обробку`;
+- outside package mode, a single document/photo/voice message is marked for automatic analysis after OCR or transcription.
 
-The workflow must keep a clear package/session ID so that multiple uploads from one user can be processed together. If a user sends files without pressing `Почати обробку`, the system should acknowledge receipt and wait.
+The workflow must keep a clear package/session ID so that multiple uploads from one user can be processed together. If a user enters `Пакетна обробка`, files wait until `Почати обробку`. If a user sends a normal text question or a single file/voice message outside package mode, FastAPI creates a short-lived package and starts analysis immediately, or after extraction when the text becomes available.
 
 ## Obsidian Requirements
 
