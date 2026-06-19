@@ -95,10 +95,10 @@ documents = int(result.get("documents_this_run") or 0)
 ok = bool(result.get("ok"))
 reason = result.get("stopped_reason")
 
-if pages == 0 and documents == 0:
-    print("complete")
-elif not ok:
+if not ok:
     print(f"stopped:{reason or 'unknown'}")
+elif pages == 0 and documents == 0:
+    print("complete")
 else:
     print("continue")
 PY
