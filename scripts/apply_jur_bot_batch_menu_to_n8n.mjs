@@ -43,6 +43,20 @@ function applyBatchMenu(workflow) {
     },
   ];
 
+  for (const nodeName of [
+    "Send Intake Event To API",
+    "Attach Document Extracted Text To API",
+    "Attach Voice Extracted Text To API",
+  ]) {
+    const httpNode = findNode(workflow, nodeName);
+    if (httpNode) {
+      httpNode.parameters.options = {
+        ...(httpNode.parameters.options || {}),
+        timeout: 300000,
+      };
+    }
+  }
+
   const clientReplyNode = findNode(workflow, "Telegram Client Menu Reply");
   if (!clientReplyNode) {
     throw new Error("Telegram Client Menu Reply node not found");
@@ -212,7 +226,11 @@ if (wasActive) {
       method: "POST",
       headers,
     });
-    if (activateResponse.status !== 429) {
+    const responseText = await activateResponse.clone().text();
+    const isRateLimited =
+      activateResponse.status === 429 ||
+      (activateResponse.status === 400 && responseText.includes("Too Many Requests"));
+    if (!isRateLimited) {
       break;
     }
     const retryAfter = Number(activateResponse.headers.get("retry-after") || "2");

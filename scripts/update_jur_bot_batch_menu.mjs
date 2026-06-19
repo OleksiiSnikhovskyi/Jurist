@@ -28,6 +28,20 @@ mainReplyNode.parameters.replyKeyboard.rows = [
   },
 ];
 
+for (const nodeName of [
+  "Send Intake Event To API",
+  "Attach Document Extracted Text To API",
+  "Attach Voice Extracted Text To API",
+]) {
+  const httpNode = findNode(nodeName);
+  if (httpNode) {
+    httpNode.parameters.options = {
+      ...(httpNode.parameters.options || {}),
+      timeout: 300000,
+    };
+  }
+}
+
 const clientReplyNode = findNode("Telegram Client Menu Reply");
 if (!findNode("Telegram Batch Menu Reply")) {
   const batchReplyNode = JSON.parse(JSON.stringify(clientReplyNode));

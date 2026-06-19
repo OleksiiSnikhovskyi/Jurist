@@ -46,7 +46,7 @@
         "specifyBody": "json",
         "jsonBody": "={{$json}}",
         "options": {
-          "timeout": 30000
+          "timeout": 300000
         }
       },
       "id": "jur-send-intake-api",
@@ -358,7 +358,7 @@
         "specifyBody": "json",
         "jsonBody": "={{$json}}",
         "options": {
-          "timeout": 60000
+          "timeout": 300000
         }
       },
       "id": "jur-attach-document-extracted-text",
@@ -434,7 +434,7 @@
         "specifyBody": "json",
         "jsonBody": "={{$json}}",
         "options": {
-          "timeout": 60000
+          "timeout": 300000
         }
       },
       "id": "jur-attach-voice-extracted-text",
