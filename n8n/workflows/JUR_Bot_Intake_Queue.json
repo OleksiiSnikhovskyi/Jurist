@@ -553,7 +553,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const result = $input.first().json || {};\nconst event = $('Normalize Telegram Update').first().json || {};\nif (!result.answer) {\n  return [];\n}\nreturn [{ json: { chat_id: event.chat_id, reply_text: result.answer } }];"
+        "jsCode": "const result = $input.first().json || {};\nconst event = $('Normalize Telegram Update').first().json || {};\nconst fallbackStatuses = new Set(['llm_error', 'waiting_for_text_extraction', 'needs_identity']);\nconst replyText = result.answer || (fallbackStatuses.has(result.status) ? result.message : '');\nif (!replyText) {\n  return [];\n}\nreturn [{ json: { chat_id: event.chat_id, reply_text: replyText } }];"
       },
       "id": "jur-build-auto-analysis-reply",
       "name": "Build Auto Analysis Reply",
@@ -610,6 +610,40 @@
           "name": "__TELEGRAM_CREDENTIAL_NAME__"
         }
       }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const result = $input.first().json || {};\nif (result.status !== 'queued') {\n  return [];\n}\nreturn [{ json: { package_id: result.package_id, requested_agent: 'orchestrator', question: 'Проаналізуй надісланий документ.' } }];"
+      },
+      "id": "jur-build-auto-process-request",
+      "name": "Build Auto Process Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.JUR_API_BASE_URL}}/n8n/intake/process",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "jur-process-auto-extracted-package",
+      "name": "Process Auto Extracted Package",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        260
+      ]
     }
   ],
   "connections": {
@@ -809,7 +843,7 @@
       "main": [
         [
           {
-            "node": "Build Auto Analysis Reply",
+            "node": "Build Auto Process Request",
             "type": "main",
             "index": 0
           }
@@ -820,7 +854,7 @@
       "main": [
         [
           {
-            "node": "Build Auto Analysis Reply",
+            "node": "Build Auto Process Request",
             "type": "main",
             "index": 0
           }
@@ -832,6 +866,28 @@
         [
           {
             "node": "Telegram Auto Analysis Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Auto Process Request": {
+      "main": [
+        [
+          {
+            "node": "Process Auto Extracted Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Auto Extracted Package": {
+      "main": [
+        [
+          {
+            "node": "Build Auto Analysis Reply",
             "type": "main",
             "index": 0
           }

@@ -819,7 +819,7 @@ def test_attach_extracted_text_indexes_telegram_attachment(
     assert db_session.query(DocumentChunk).filter_by(document_id=document.id).count() == 1
 
 
-def test_attach_extracted_text_auto_processes_single_attachment(
+def test_attach_extracted_text_queues_auto_processing_without_blocking(
     client: TestClient,
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -869,12 +869,13 @@ def test_attach_extracted_text_auto_processes_single_attachment(
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "processed"
-    assert payload["answer"] == "LLM відповідь для юриста."
-    assert fake_llm.command is not None
-    assert "ризиком штрафу" in fake_llm.command.package_text
+    assert payload["status"] == "queued"
+    assert payload["answer"] is None
+    assert payload["message"] == "Extracted text attached and queued for analysis."
+    assert fake_llm.command is None
     db_session.refresh(package)
     assert "auto_process_after_extraction" not in package.metadata_json
+    assert package.metadata_json["analysis_requested_after_extraction"] is True
 
 
 def test_start_package_processing_uses_extracted_attachment_text(

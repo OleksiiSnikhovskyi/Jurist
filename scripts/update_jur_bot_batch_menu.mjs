@@ -32,12 +32,13 @@ for (const nodeName of [
   "Send Intake Event To API",
   "Attach Document Extracted Text To API",
   "Attach Voice Extracted Text To API",
+  "Process Auto Extracted Package",
 ]) {
   const httpNode = findNode(nodeName);
   if (httpNode) {
     httpNode.parameters.options = {
       ...(httpNode.parameters.options || {}),
-      timeout: 300000,
+      timeout: nodeName === "Process Auto Extracted Package" ? 900000 : 300000,
     };
   }
 }
@@ -193,34 +194,78 @@ workflow.connections["Route Batch Reply Menu"] = {
   ],
 };
 
-if (!findNode("Build Auto Analysis Reply")) {
+if (!findNode("Build Auto Process Request")) {
   workflow.nodes.push({
     parameters: {
       mode: "runOnceForAllItems",
       jsCode:
-        "const result = $input.first().json || {};\nconst event = $('Normalize Telegram Update').first().json || {};\nif (!result.answer) {\n  return [];\n}\nreturn [{ json: { chat_id: event.chat_id, reply_text: result.answer } }];",
+        "const result = $input.first().json || {};\nif (result.status !== 'queued') {\n  return [];\n}\nreturn [{ json: { package_id: result.package_id, requested_agent: 'orchestrator', question: 'Проаналізуй надісланий документ.' } }];",
     },
-    id: "jur-build-auto-analysis-reply",
-    name: "Build Auto Analysis Reply",
+    id: "jur-build-auto-process-request",
+    name: "Build Auto Process Request",
     type: "n8n-nodes-base.code",
     typeVersion: 2,
     position: [1680, 260],
   });
 }
 
+if (!findNode("Process Auto Extracted Package")) {
+  workflow.nodes.push({
+    parameters: {
+      method: "POST",
+      url: "={{$env.JUR_API_BASE_URL}}/n8n/intake/process",
+      sendBody: true,
+      specifyBody: "json",
+      jsonBody: "={{$json}}",
+      options: {
+        timeout: 900000,
+      },
+    },
+    id: "jur-process-auto-extracted-package",
+    name: "Process Auto Extracted Package",
+    type: "n8n-nodes-base.httpRequest",
+    typeVersion: 4.2,
+    position: [1920, 260],
+  });
+}
+
+if (!findNode("Build Auto Analysis Reply")) {
+  workflow.nodes.push({
+    parameters: {
+      mode: "runOnceForAllItems",
+      jsCode:
+        "const result = $input.first().json || {};\nconst event = $('Normalize Telegram Update').first().json || {};\nconst fallbackStatuses = new Set(['llm_error', 'waiting_for_text_extraction', 'needs_identity']);\nconst replyText = result.answer || (fallbackStatuses.has(result.status) ? result.message : '');\nif (!replyText) {\n  return [];\n}\nreturn [{ json: { chat_id: event.chat_id, reply_text: replyText } }];",
+    },
+    id: "jur-build-auto-analysis-reply",
+    name: "Build Auto Analysis Reply",
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position: [2160, 260],
+  });
+}
+
+findNode("Build Auto Analysis Reply").parameters.jsCode =
+  "const result = $input.first().json || {};\nconst event = $('Normalize Telegram Update').first().json || {};\nconst fallbackStatuses = new Set(['llm_error', 'waiting_for_text_extraction', 'needs_identity']);\nconst replyText = result.answer || (fallbackStatuses.has(result.status) ? result.message : '');\nif (!replyText) {\n  return [];\n}\nreturn [{ json: { chat_id: event.chat_id, reply_text: replyText } }];";
+
 if (!findNode("Telegram Auto Analysis Reply")) {
   const autoReplyNode = JSON.parse(JSON.stringify(mainReplyNode));
   autoReplyNode.id = "jur-telegram-auto-analysis-reply";
   autoReplyNode.name = "Telegram Auto Analysis Reply";
-  autoReplyNode.position = [1920, 260];
+  autoReplyNode.position = [2400, 260];
   autoReplyNode.parameters.text = "={{$json.reply_text || 'Аналіз завершено.'}}";
   workflow.nodes.push(autoReplyNode);
 }
 
 workflow.connections["Attach Document Extracted Text To API"] = {
-  main: [[{ node: "Build Auto Analysis Reply", type: "main", index: 0 }]],
+  main: [[{ node: "Build Auto Process Request", type: "main", index: 0 }]],
 };
 workflow.connections["Attach Voice Extracted Text To API"] = {
+  main: [[{ node: "Build Auto Process Request", type: "main", index: 0 }]],
+};
+workflow.connections["Build Auto Process Request"] = {
+  main: [[{ node: "Process Auto Extracted Package", type: "main", index: 0 }]],
+};
+workflow.connections["Process Auto Extracted Package"] = {
   main: [[{ node: "Build Auto Analysis Reply", type: "main", index: 0 }]],
 };
 workflow.connections["Build Auto Analysis Reply"] = {

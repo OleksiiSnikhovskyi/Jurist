@@ -298,7 +298,7 @@ class N8nIntegrationService:
             package_id=package.id,
             status=package.status,
             item_count=self._count_items(package.id).total,
-            message="Package processing was requested.",
+            message=answer or "Package processing was requested.",
             answer=answer if package.status == "processed" else None,
         )
 
@@ -358,16 +358,14 @@ class N8nIntegrationService:
             "last_extracted_document_id": document.id,
         }
         package.metadata_json = package_metadata
-        answer = None
         if package_metadata.get("auto_process_after_extraction"):
             package_metadata.pop("auto_process_after_extraction", None)
+            package_metadata["analysis_requested_after_extraction"] = True
+            package_metadata["processing_note"] = (
+                "Extracted text attached; analysis queued for explicit processing."
+            )
             package.metadata_json = package_metadata
             package.status = "queued"
-            answer = self._try_process_package_with_llm(
-                package=package,
-                workspace_id=workspace_id,
-                user_id=user_id,
-            )
         self.audit_log_service.record(
             AuditLogCommand(
                 action="n8n.intake_extracted_text_attached",
@@ -391,9 +389,13 @@ class N8nIntegrationService:
             item_id=item.id,
             document_id=document.id,
             chunk_count=len(persisted_chunks),
-            message=answer or "Extracted text attached and indexed.",
+            message=(
+                "Extracted text attached and queued for analysis."
+                if package.status == "queued"
+                else "Extracted text attached and indexed."
+            ),
             status=package.status,
-            answer=answer if package.status == "processed" else None,
+            answer=None,
         )
 
     def _try_process_package_with_llm(

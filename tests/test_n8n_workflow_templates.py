@@ -45,6 +45,8 @@ def test_telegram_intake_template_has_required_actions() -> None:
         assert button_text in workflow_text
     assert "batch_processing_menu" in workflow_text
     assert "Telegram Batch Menu Reply" in workflow_text
+    assert "Build Auto Process Request" in workflow_text
+    assert "Process Auto Extracted Package" in workflow_text
     assert "Build Auto Analysis Reply" in workflow_text
     assert "Telegram Auto Analysis Reply" in workflow_text
 
