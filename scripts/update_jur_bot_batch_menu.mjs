@@ -42,6 +42,31 @@ for (const nodeName of [
   }
 }
 
+const prepareDocumentParseNode = findNode("Prepare Document Parse Payload");
+prepareDocumentParseNode.parameters.jsCode = `const item = $input.first();
+const job = item.json || {};
+const binaryValues = Object.values(item.binary || {});
+const binary = binaryValues[0] || {};
+const binaryKey = Object.keys(item.binary || {})[0] || 'data';
+const fileName = binary.fileName || job.file_name || (job.item_type + '-' + job.external_file_id);
+const mimeType = binary.mimeType || job.mime_type || 'application/octet-stream';
+const extension = (fileName.split('.').pop() || '').toLowerCase();
+const sourceFormat = extension || (mimeType.split('/').pop() || 'bin');
+const sourceBuffer = await this.helpers.getBinaryDataBuffer(0, binaryKey);
+
+return [{
+  json: {
+    ...job,
+    source_filename: fileName,
+    source_mime: mimeType,
+    source_size: binary.fileSize || job.file_size || null,
+    source_format: sourceFormat,
+    source_base64: sourceBuffer.toString('base64'),
+    processing_lane: job.item_type === 'photo' || mimeType.startsWith('image/') ? 'ocr' : 'auto',
+    document_type: job.item_type === 'photo' ? 'telegram_photo' : 'telegram_document'
+  }
+}];`;
+
 const clientReplyNode = findNode("Telegram Client Menu Reply");
 if (!findNode("Telegram Batch Menu Reply")) {
   const batchReplyNode = JSON.parse(JSON.stringify(clientReplyNode));
