@@ -69,7 +69,9 @@ return attachments
   }));`;
 
 const prepareDocumentParseCode = String.raw`const item = $input.first();
-const job = item.json || {};
+const sourceJob = $('Route Voice Or Document').first().json || {};
+const telegramFile = item.json || {};
+const job = { ...sourceJob, telegram_file: telegramFile };
 const binaryValues = Object.values(item.binary || {});
 const binary = binaryValues[0] || {};
 const binaryKey = Object.keys(item.binary || {})[0] || 'data';
@@ -124,7 +126,9 @@ return [{
 }];`;
 
 const buildVoiceExtractedTextCode = String.raw`const transcription = $input.first().json || {};
-const job = $('Download Telegram Voice').first().json || $('Route Voice Or Document').first().json || {};
+const sourceJob = $('Route Voice Or Document').first().json || {};
+const telegramFile = $('Download Telegram Voice').first().json || {};
+const job = { ...sourceJob, telegram_file: telegramFile };
 const text = transcription.text || transcription.transcript || transcription.output || '';
 
 if (!String(text).trim()) {

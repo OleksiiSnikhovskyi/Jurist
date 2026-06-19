@@ -62,7 +62,9 @@ function applyBatchMenu(workflow) {
     throw new Error("Prepare Document Parse Payload node not found");
   }
   prepareDocumentParseNode.parameters.jsCode = `const item = $input.first();
-const job = item.json || {};
+const sourceJob = $('Route Voice Or Document').first().json || {};
+const telegramFile = item.json || {};
+const job = { ...sourceJob, telegram_file: telegramFile };
 const binaryValues = Object.values(item.binary || {});
 const binary = binaryValues[0] || {};
 const binaryKey = Object.keys(item.binary || {})[0] || 'data';
@@ -84,6 +86,38 @@ return [{
     document_type: job.item_type === 'photo' ? 'telegram_photo' : 'telegram_document'
   }
 }];`;
+
+  const buildVoiceExtractedTextNode = findNode(workflow, "Build Voice Extracted Text Payload");
+  if (buildVoiceExtractedTextNode) {
+    buildVoiceExtractedTextNode.parameters.jsCode = `const transcription = $input.first().json || {};
+const sourceJob = $('Route Voice Or Document').first().json || {};
+const telegramFile = $('Download Telegram Voice').first().json || {};
+const job = { ...sourceJob, telegram_file: telegramFile };
+const text = transcription.text || transcription.transcript || transcription.output || '';
+
+if (!String(text).trim()) {
+  return [];
+}
+
+return [{
+  json: {
+    package_id: job.package_id,
+    external_file_id: job.external_file_id,
+    workspace_id: job.workspace_id,
+    user_id: job.user_id,
+    extracted_text: String(text).trim(),
+    file_name: job.file_name || ('voice-' + job.external_file_id + '.oga'),
+    mime_type: job.mime_type || 'audio/ogg',
+    extraction_method: 'telegram.voice_transcription',
+    document_type: 'telegram_voice',
+    metadata: {
+      item_type: 'voice',
+      duration: job.duration || null,
+      source_size: job.file_size || null
+    }
+  }
+}];`;
+  }
 
   const clientReplyNode = findNode(workflow, "Telegram Client Menu Reply");
   if (!clientReplyNode) {
