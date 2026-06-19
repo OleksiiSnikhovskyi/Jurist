@@ -206,19 +206,19 @@ if (!updateResponse.ok) {
 }
 
 if (wasActive) {
-  let activateResponse = await fetch(`${baseUrl}/api/v1/workflows/${workflowId}/activate`, {
-    method: "POST",
-    headers,
-  });
-  if (activateResponse.status === 429) {
-    const retryAfter = Number(activateResponse.headers.get("retry-after") || "2");
-    await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+  let activateResponse;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     activateResponse = await fetch(`${baseUrl}/api/v1/workflows/${workflowId}/activate`, {
       method: "POST",
       headers,
     });
+    if (activateResponse.status !== 429) {
+      break;
+    }
+    const retryAfter = Number(activateResponse.headers.get("retry-after") || "2");
+    await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
   }
-  if (!activateResponse.ok) {
+  if (!activateResponse?.ok) {
     throw new Error(`Failed to activate workflow: ${activateResponse.status} ${await activateResponse.text()}`);
   }
 }
