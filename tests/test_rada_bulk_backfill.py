@@ -33,6 +33,7 @@ def test_build_catalog_page_url_uses_rada_page_numbers() -> None:
     assert build_catalog_page_url(base_url, 1) == base_url
     assert build_catalog_page_url(base_url, 51) == f"{base_url}51"
     assert build_catalog_page_url(f"{base_url}/", 101) == f"{base_url}101"
+    assert build_catalog_page_url(base_url, 1000) == f"{base_url}1000/"
 
 
 def test_backfill_uses_sequential_rada_page_numbers_by_default() -> None:

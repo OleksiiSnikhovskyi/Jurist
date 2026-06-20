@@ -263,6 +263,8 @@ def build_catalog_page_url(catalog_url: str, offset: int) -> str:
     clean_url = catalog_url.rstrip("/")
     if offset <= 1:
         return clean_url
+    if offset >= 1000:
+        return f"{clean_url}{offset}/"
     return f"{clean_url}{offset}"
 
 
