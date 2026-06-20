@@ -71,6 +71,21 @@ FINANCIAL_LEASING_KEYWORDS = (
     "лізингоодерж",
 )
 
+FOLLOWUP_REFERENCE_KEYWORDS = (
+    "цей догов",
+    "цього догов",
+    "цьому догов",
+    "цей документ",
+    "цього документ",
+    "цьому документ",
+    "надісланий документ",
+    "попередній документ",
+    "по кожному",
+    "за пунктами",
+    "рекомендац",
+    "удосконален",
+)
+
 
 @dataclass(frozen=True)
 class PackageItemCounts:
@@ -176,6 +191,7 @@ class N8nIntegrationService:
                 package.requested_agent = event.requested_agent or "orchestrator"
                 package.question = event.question or event.text
                 self._attach_active_client_profile(package, event)
+                self._attach_recent_processed_context(package, event)
                 reply_text = self._try_process_package_with_llm(
                     package=package,
                     workspace_id=event.workspace_id,
@@ -470,12 +486,28 @@ class N8nIntegrationService:
         workspace_id: str,
         user_id: str,
     ) -> LegalPackageAnalysisCommand:
+        package_metadata = dict(package.metadata_json or {})
+        source_package_id = package_metadata.get("followup_source_package_id")
+        source_items: list[N8nIntakeItem] = []
+        if source_package_id:
+            source_items = (
+                self.db.query(N8nIntakeItem)
+                .filter(N8nIntakeItem.package_id == source_package_id)
+                .order_by(N8nIntakeItem.created_at.asc())
+                .all()
+            )
+
         items = (
             self.db.query(N8nIntakeItem)
             .filter(N8nIntakeItem.package_id == package.id)
             .order_by(N8nIntakeItem.created_at.asc())
             .all()
         )
+        source_text_parts = [
+            f"- [попередній пакет: {item.item_type}] {item.text.strip()}"
+            for item in source_items
+            if item.text and item.text.strip()
+        ]
         text_parts = [
             f"- [{item.item_type}] {item.text.strip()}"
             for item in items
@@ -486,7 +518,7 @@ class N8nIntegrationService:
             for item in items
             if item.item_type != "text"
         ]
-        package_text = "\n".join(text_parts)
+        package_text = "\n".join(source_text_parts + text_parts)
         question = package.question or "Опрацюй матеріали пакета та підготуй юридичну відповідь."
         lawyer_profile = (
             self.db.query(LawyerProfile)
@@ -499,7 +531,7 @@ class N8nIntegrationService:
             else "Працюй як юридичний асистент українського юриста."
         )
         client_context = None
-        client_profile_id = (package.metadata_json or {}).get("client_profile_id")
+        client_profile_id = package_metadata.get("client_profile_id")
         if client_profile_id:
             client = self.agent_context_service.load_client_context(
                 client_profile_id=client_profile_id,
@@ -567,6 +599,35 @@ class N8nIntegrationService:
                 continue
             filtered.append(fragment)
         return filtered
+
+    def _attach_recent_processed_context(
+        self,
+        package: N8nIntakePackage,
+        event: TelegramIntakeEvent,
+    ) -> None:
+        if event.action != "free_text" or event.attachments or not event.text:
+            return
+        text_lower = event.text.lower()
+        if not any(keyword in text_lower for keyword in FOLLOWUP_REFERENCE_KEYWORDS):
+            return
+
+        recent_package = (
+            self.db.query(N8nIntakePackage)
+            .filter(
+                N8nIntakePackage.channel == "telegram",
+                N8nIntakePackage.external_chat_id == event.chat_id,
+                N8nIntakePackage.status == "processed",
+                N8nIntakePackage.id != package.id,
+            )
+            .order_by(N8nIntakePackage.updated_at.desc(), N8nIntakePackage.created_at.desc())
+            .first()
+        )
+        if recent_package is None:
+            return
+
+        metadata = dict(package.metadata_json or {})
+        metadata["followup_source_package_id"] = recent_package.id
+        package.metadata_json = metadata
 
     def _find_intake_item_for_extraction(
         self,

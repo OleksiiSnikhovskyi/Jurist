@@ -707,6 +707,58 @@ def test_telegram_free_text_processes_immediately(
     assert "договору поставки" in fake_llm.command.package_text
 
 
+def test_telegram_followup_uses_last_processed_document_context(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session)
+    previous = N8nIntakePackage(
+        id="previous-contract-package",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        external_user_id="200",
+        status="processed",
+        question="Проаналізуй договір",
+    )
+    db_session.add(previous)
+    db_session.add(
+        N8nIntakeItem(
+            package_id="previous-contract-package",
+            item_type="document",
+            file_name="contract.docx",
+            text="ПрАТ Л-КАПІТАЛ уклало договір з ФОП про науково-проєктні роботи.",
+        )
+    )
+    db_session.commit()
+    fake_llm = FakeLegalAnalysisService()
+
+    original_init = N8nIntegrationService.__init__
+
+    def init_with_fake_llm(self: N8nIntegrationService, *args, **kwargs) -> None:
+        kwargs["legal_analysis_service"] = fake_llm
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(N8nIntegrationService, "__init__", init_with_fake_llm)
+
+    payload = _post_telegram_text(client, "Які рекомендації щодо удосконалення цього договору?")
+
+    assert payload["status"] == "processed"
+    assert fake_llm.command is not None
+    assert "ПрАТ Л-КАПІТАЛ" in fake_llm.command.package_text
+    assert "удосконалення цього договору" in fake_llm.command.package_text
+    current_package = (
+        db_session.query(N8nIntakePackage)
+        .filter(N8nIntakePackage.id != "previous-contract-package")
+        .one()
+    )
+    assert current_package.metadata_json["followup_source_package_id"] == "previous-contract-package"
+
+
 def test_start_package_processing_can_return_ollama_answer(
     db_session: Session,
 ) -> None:
