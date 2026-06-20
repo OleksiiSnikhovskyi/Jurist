@@ -499,15 +499,9 @@ class N8nIntegrationService:
         user_id: str,
     ) -> LegalPackageAnalysisCommand:
         package_metadata = dict(package.metadata_json or {})
-        source_package_id = package_metadata.get("followup_source_package_id")
-        source_items: list[N8nIntakeItem] = []
-        if source_package_id:
-            source_items = (
-                self.db.query(N8nIntakeItem)
-                .filter(N8nIntakeItem.package_id == source_package_id)
-                .order_by(N8nIntakeItem.created_at.asc())
-                .all()
-            )
+        source_items = self._collect_followup_source_items(
+            package_metadata.get("followup_source_package_id")
+        )
 
         items = (
             self.db.query(N8nIntakeItem)
@@ -671,8 +665,58 @@ class N8nIntegrationService:
             return
 
         metadata = dict(package.metadata_json or {})
-        metadata["followup_source_package_id"] = recent_package.id
+        metadata["followup_source_package_id"] = self._resolve_followup_source_package_id(recent_package)
         package.metadata_json = metadata
+
+    def _resolve_followup_source_package_id(self, package: N8nIntakePackage) -> str:
+        current_package = package
+        visited: set[str] = set()
+        for _ in range(5):
+            current_id = str(current_package.id)
+            if current_id in visited:
+                break
+            visited.add(current_id)
+            source_package_id = (current_package.metadata_json or {}).get("followup_source_package_id")
+            if not source_package_id:
+                return current_id
+            source_package = self.db.get(N8nIntakePackage, source_package_id)
+            if source_package is None:
+                return current_id
+            current_package = source_package
+        return str(current_package.id)
+
+    def _collect_followup_source_items(
+        self,
+        source_package_id: str | None,
+    ) -> list[N8nIntakeItem]:
+        if not source_package_id:
+            return []
+
+        package_ids: list[str] = []
+        current_package_id = source_package_id
+        visited: set[str] = set()
+        for _ in range(5):
+            if current_package_id in visited:
+                break
+            visited.add(current_package_id)
+            package = self.db.get(N8nIntakePackage, current_package_id)
+            if package is None:
+                break
+            package_ids.append(str(package.id))
+            next_package_id = (package.metadata_json or {}).get("followup_source_package_id")
+            if not next_package_id:
+                break
+            current_package_id = next_package_id
+
+        source_items: list[N8nIntakeItem] = []
+        for package_id in reversed(package_ids):
+            source_items.extend(
+                self.db.query(N8nIntakeItem)
+                .filter(N8nIntakeItem.package_id == package_id)
+                .order_by(N8nIntakeItem.created_at.asc())
+                .all()
+            )
+        return source_items
 
     def _find_intake_item_for_extraction(
         self,

@@ -798,6 +798,83 @@ def test_telegram_followup_uses_last_processed_document_context(
     assert current_package.metadata_json["followup_source_package_id"] == "previous-contract-package"
 
 
+def test_telegram_followup_resolves_previous_followup_to_original_document(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session)
+    original = N8nIntakePackage(
+        id="original-contract-package",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        external_user_id="200",
+        status="processed",
+        question="Проаналізуй договір",
+    )
+    previous_followup = N8nIntakePackage(
+        id="previous-followup-package",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        external_user_id="200",
+        status="processed",
+        question="Що в договорі треба перевірити за ДБН?",
+        metadata_json={"followup_source_package_id": "original-contract-package"},
+    )
+    db_session.add_all([original, previous_followup])
+    db_session.add(
+        N8nIntakeItem(
+            package_id="original-contract-package",
+            item_type="document",
+            file_name="contract.docx",
+            text=(
+                "ПрАТ Л-КАПІТАЛ уклало договір з ФОП про розробку "
+                "науково-проєктної документації на суму 944 601,75 грн."
+            ),
+        )
+    )
+    db_session.add(
+        N8nIntakeItem(
+            package_id="previous-followup-package",
+            item_type="text",
+            text="Що в договорі треба перевірити за ДБН?",
+        )
+    )
+    db_session.commit()
+    fake_llm = FakeLegalAnalysisService()
+
+    original_init = N8nIntegrationService.__init__
+
+    def init_with_fake_llm(self: N8nIntegrationService, *args, **kwargs) -> None:
+        kwargs["legal_analysis_service"] = fake_llm
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(N8nIntegrationService, "__init__", init_with_fake_llm)
+
+    payload = _post_telegram_text(client, "Які рекомендації щодо удосконалення цього договору?")
+
+    assert payload["status"] == "processed"
+    assert fake_llm.command is not None
+    assert "944 601,75 грн" in fake_llm.command.package_text
+    assert "Що в договорі треба перевірити за ДБН" not in fake_llm.command.package_text
+    current_package = (
+        db_session.query(N8nIntakePackage)
+        .filter(
+            N8nIntakePackage.id.notin_(
+                ["original-contract-package", "previous-followup-package"]
+            )
+        )
+        .one()
+    )
+    assert current_package.metadata_json["followup_source_package_id"] == "original-contract-package"
+
+
 def test_start_package_processing_can_return_ollama_answer(
     db_session: Session,
 ) -> None:
