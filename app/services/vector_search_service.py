@@ -1,4 +1,5 @@
 import math
+import re
 from dataclasses import dataclass
 
 from sqlalchemy import text
@@ -21,6 +22,8 @@ class VectorSearchCommand:
     user_id: str
     query: str
     limit: int = 5
+    document_ids: list[str] | None = None
+    exact_terms: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -56,7 +59,13 @@ class VectorSearchService:
             return []
 
         query_embedding = self.embedding_provider.embed(command.query)
+        if self.db.get_bind().dialect.name == "postgresql":
+            return self._search_postgresql(command, query_embedding)
+
         chunks = self.document_repository.list_chunks_for_workspace(command.workspace_id)
+        if command.document_ids:
+            allowed_document_ids = set(command.document_ids)
+            chunks = [chunk for chunk in chunks if chunk.document_id in allowed_document_ids]
         scored_results = [
             self._score_chunk(chunk, query_embedding)
             for chunk in chunks
@@ -97,6 +106,94 @@ class VectorSearchService:
         chunk.embedding = embedding
         self.db.add(chunk)
 
+    def _search_postgresql(
+        self,
+        command: VectorSearchCommand,
+        query_embedding: list[float],
+    ) -> list[VectorSearchResult]:
+        document_ids = command.document_ids or self._find_exact_document_ids(command)
+        params = {
+            "workspace_id": command.workspace_id,
+            "query_embedding": serialize_embedding(query_embedding),
+            "limit": command.limit,
+        }
+        document_filter = ""
+        if document_ids:
+            params["document_ids"] = document_ids
+            document_filter = "AND dc.document_id = ANY(CAST(:document_ids AS uuid[]))"
+
+        rows = self.db.execute(
+            text(
+                f"""
+                SELECT
+                    dc.id AS chunk_id,
+                    dc.document_id AS document_id,
+                    dc.workspace_id AS workspace_id,
+                    dc.chunk_index AS chunk_index,
+                    dc.chunk_text AS chunk_text,
+                    1 - (dc.embedding <=> CAST(:query_embedding AS vector)) AS score
+                FROM document_chunks dc
+                WHERE dc.workspace_id = :workspace_id
+                  AND dc.embedding IS NOT NULL
+                  AND length(trim(dc.chunk_text)) > 0
+                  {document_filter}
+                ORDER BY dc.embedding <=> CAST(:query_embedding AS vector)
+                LIMIT :limit
+                """
+            ),
+            params,
+        ).mappings()
+        return [
+            VectorSearchResult(
+                chunk_id=str(row["chunk_id"]),
+                document_id=str(row["document_id"]),
+                workspace_id=str(row["workspace_id"]),
+                chunk_index=int(row["chunk_index"]),
+                chunk_text=str(row["chunk_text"]),
+                score=float(row["score"]),
+            )
+            for row in rows
+        ]
+
+    def _find_exact_document_ids(self, command: VectorSearchCommand) -> list[str]:
+        terms = command.exact_terms or extract_legal_reference_terms(command.query)
+        if not terms:
+            return []
+
+        rows = self.db.execute(
+            text(
+                """
+                WITH matched_sources AS (
+                    SELECT source_url, source_name, document_number
+                    FROM legal_sources
+                    WHERE validity_status IS DISTINCT FROM 'invalid'
+                      AND (
+                        document_number = ANY(CAST(:terms AS text[]))
+                        OR source_name = ANY(CAST(:terms AS text[]))
+                        OR source_name ILIKE ANY(CAST(:like_terms AS text[]))
+                      )
+                    LIMIT 20
+                )
+                SELECT DISTINCT d.id
+                FROM documents d
+                JOIN matched_sources s
+                  ON (
+                    (s.source_url IS NOT NULL AND d.file_path ILIKE '%' || s.source_url || '%')
+                    OR (s.document_number IS NOT NULL AND d.document_name ILIKE '%' || s.document_number || '%')
+                    OR d.document_name = s.source_name
+                  )
+                WHERE d.workspace_id = :workspace_id
+                LIMIT 20
+                """
+            ),
+            {
+                "workspace_id": command.workspace_id,
+                "terms": terms,
+                "like_terms": [f"%{term}%" for term in terms],
+            },
+        ).all()
+        return [str(row[0]) for row in rows]
+
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:
     if len(left) != len(right):
@@ -107,3 +204,19 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
     if left_norm == 0 or right_norm == 0:
         return 0.0
     return dot / (left_norm * right_norm)
+
+
+LEGAL_REFERENCE_PATTERN = re.compile(
+    r"\b(?:ДБН|ДСТУ)\s+[А-ЯA-Z]?[.\-\sА-ЯA-Z0-9]+:\d{4}\b|"
+    r"\b\d{1,5}-[IVXІВХA-ZА-Я]{1,8}\b",
+    flags=re.IGNORECASE,
+)
+
+
+def extract_legal_reference_terms(text_value: str) -> list[str]:
+    terms = []
+    for match in LEGAL_REFERENCE_PATTERN.findall(text_value):
+        normalized = " ".join(match.split()).strip(" .;,")
+        if normalized and normalized not in terms:
+            terms.append(normalized)
+    return terms

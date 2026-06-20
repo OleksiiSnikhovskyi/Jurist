@@ -14,6 +14,7 @@ from app.services.vector_search_service import (
     VectorSearchCommand,
     VectorSearchService,
     cosine_similarity,
+    extract_legal_reference_terms,
 )
 
 
@@ -153,6 +154,21 @@ def test_vector_search_uses_existing_embedding(db_session: Session) -> None:
     assert results[0].chunk_id == "chunk-2"
 
 
+def test_vector_search_can_filter_to_document_ids(db_session: Session) -> None:
+    _seed_chunks(db_session)
+
+    results = VectorSearchService(db_session, embedding_provider=KeywordEmbeddingProvider()).search(
+        VectorSearchCommand(
+            workspace_id="workspace-1",
+            user_id="user-1",
+            query="contract",
+            document_ids=["document-missing"],
+        )
+    )
+
+    assert results == []
+
+
 def test_vector_search_denies_non_member(db_session: Session) -> None:
     _seed_chunks(db_session)
 
@@ -165,3 +181,10 @@ def test_vector_search_denies_non_member(db_session: Session) -> None:
 def test_cosine_similarity_rejects_dimension_mismatch() -> None:
     with pytest.raises(ValueError):
         cosine_similarity([1.0], [1.0, 0.0])
+
+
+def test_extract_legal_reference_terms_finds_dbn_and_law_numbers() -> None:
+    assert extract_legal_reference_terms("Перевір ДБН А.2.2-14:2016 та закон 435-IV.") == [
+        "ДБН А.2.2-14:2016",
+        "435-IV",
+    ]

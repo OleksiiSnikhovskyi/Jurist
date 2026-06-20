@@ -78,6 +78,24 @@
 - [ ] Fill the production `priority_manifest.csv` from official source exports and ingest the legal corpus. Rada catalog backfill is running in validated 25-page batches from official current documents.
 - [x] Schedule daily Rada arrivals sync and ingest delta updates.
 
+## Stage 7A: Search Performance Foundation
+
+- [x] Install `bge-m3` on Miledy Ollama and verify `/api/embed` returns 1024-dimensional vectors.
+- [x] Add Ollama embedding provider configuration for `bge-m3`.
+- [x] Add migration for `document_chunks.embedding` as `vector(1024)` plus pgvector/search indexes.
+- [x] Add resume-safe document chunk re-embedding script.
+- [x] Move PostgreSQL vector search from Python cosine scoring to pgvector SQL ordering.
+- [ ] Run production migration and re-embed all chunks.
+- [ ] Add structured Telegram/RAG timing logs.
+- [ ] Add Obsidian registry/aliases sync for exact legal-source routing.
+
+## Stage 7B: Knowledge Corpus Completion
+
+- [ ] Continue Rada backfill until the official catalog is fully processed.
+- [ ] Keep only valid/current official documents in the production manifest.
+- [ ] Rebuild and validate `priority_manifest.csv` after corpus completion.
+- [ ] Re-ingest or refresh legal corpus chunks after embedding migration when needed.
+
 ## Stage 8: Telegram User Onboarding
 
 - [x] Require lawyer activity direction during Telegram onboarding.
@@ -99,6 +117,7 @@
 
 ## Stage 9: Legal Answer Production
 
+- [ ] Add query router so contract-only questions use active document chunks, exact legal references use exact lookup, and general questions use hybrid search.
 - [ ] Connect package processing to document extraction, chunking, vector search, and agents.
 - [ ] Store generated answers in `legal_opinions`.
 - [ ] Add lawyer review/approval state for generated opinions.
@@ -112,4 +131,4 @@
 - [ ] Add structured logging and execution tracing.
 - [ ] Add backup/restore instructions for `jur_db`.
 - [ ] Add CI workflow for tests and migration checks.
-- [ ] Replace deterministic embeddings with a production embedding provider.
+- [x] Replace deterministic embeddings configuration with a production Ollama embedding provider.

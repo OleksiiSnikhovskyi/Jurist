@@ -30,9 +30,9 @@ Knowledge-base ingestion and LLM answer generation are separate flows. Ingestion
 
 Obsidian vault ingestion parses Markdown notes into note/chunk objects for indexing. Vault notes are treated like workspace-scoped private knowledge, preserving note path, frontmatter, tags, and links as retrieval metadata.
 
-Embedding generation is configured through `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, and `EMBEDDING_DIMENSIONS`. The default `deterministic` provider is for local development and tests only; production semantic search should use a real embedding model with the same vector dimension as the database schema.
+Embedding generation is configured through `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_TIMEOUT_SECONDS`, and `EMBEDDING_DIMENSIONS`. The `deterministic` provider is for local development and tests only. Production semantic search uses Ollama `/api/embed` with `bge-m3` on Miledy and 1024-dimensional pgvector storage.
 
-Vector search uses `VectorSearchService` to require workspace membership, load only chunks from the requested `workspace_id`, fill missing chunk embeddings, and rank results by cosine similarity. The first implementation keeps ranking in Python for portability; PostgreSQL pgvector indexing can replace the scoring layer later without changing access-control rules.
+Vector search uses `VectorSearchService` to require workspace membership and scope results to the requested `workspace_id`. PostgreSQL deployments rank chunks with pgvector cosine distance and HNSW indexes; SQLite tests keep the Python cosine fallback for portability.
 
 Contract review uses `ContractReviewAgent` over workspace-filtered search results. The first implementation is deterministic and source-aware: it identifies checklist risk areas from retrieved chunks and returns warnings instead of generating definitive legal conclusions.
 

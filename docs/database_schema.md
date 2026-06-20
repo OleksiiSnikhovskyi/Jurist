@@ -22,6 +22,6 @@ Run migrations with:
 alembic upgrade head
 ```
 
-The migration enables PostgreSQL `vector` extension for future pgvector search.
+The migrations enable PostgreSQL `vector` and `pg_trgm` extensions. Production document chunk embeddings use `vector(1024)` for Ollama `bge-m3`, with pgvector HNSW indexing for cosine search.
 
 The application database is `jur_db`; the technical PostgreSQL role is `jur_user`. These are infrastructure credentials and are separate from application users, lawyers, and future client records.

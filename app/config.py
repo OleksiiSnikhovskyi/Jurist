@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     embedding_provider: str = "deterministic"
     embedding_model: str = "local-hash-v1"
+    embedding_base_url: str | None = None
+    embedding_timeout_seconds: int = 120
     embedding_dimensions: int = 1536
     jur_ollama_base_url: str | None = None
     jur_ollama_model: str = "qwen3:8b"
