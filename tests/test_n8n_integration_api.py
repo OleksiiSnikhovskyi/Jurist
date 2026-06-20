@@ -660,6 +660,45 @@ def test_package_source_filter_removes_public_sector_fragments_for_private_contr
     assert [fragment.document_id for fragment in filtered] == ["private-source"]
 
 
+def test_package_source_filter_does_not_treat_state_building_standards_as_procurement(
+    db_session: Session,
+) -> None:
+    service = N8nIntegrationService(db_session)
+
+    filtered = service._filter_source_fragments_for_package(
+        package_text="Документація має відповідати державним будівельним нормам і ДБН.",
+        fragments=[
+            SourceFragment(
+                document_id="procurement-source",
+                chunk_index=1,
+                score=0.9,
+                text="Закон України про публічні закупівлі та державного замовника.",
+            )
+        ],
+    )
+
+    assert filtered == []
+
+
+def test_llm_answer_sanitizer_removes_procurement_when_private_contract(
+    db_session: Session,
+) -> None:
+    service = N8nIntegrationService(db_session)
+
+    answer = service._sanitize_answer_for_package(
+        package_text="ПрАТ уклало договір з ФОП. Роботи виконуються за державними будівельними нормами.",
+        answer=(
+            "Договір стосується приватних сторін.\n"
+            "Потрібно перевірити Закон України про публічні закупівлі.\n"
+            "Варто уточнити строки приймання робіт."
+        ),
+    )
+
+    assert "публічні закупівлі" not in answer
+    assert "приватних сторін" in answer
+    assert "строки приймання" in answer
+
+
 def test_telegram_batch_menu_keeps_materials_pending(
     client: TestClient,
     db_session: Session,

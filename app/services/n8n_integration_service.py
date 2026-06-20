@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from urllib.parse import urlparse
@@ -50,17 +51,24 @@ class IntakeItemNotFoundError(Exception):
 
 
 PUBLIC_SECTOR_KEYWORDS = (
-    "держав",
     "комунальн",
-    "публічн",
     "закупів",
     "prozorro",
     "прозорро",
-    "бюджет",
+    "бюджетні кошти",
+    "бюджетних коштів",
+    "розпорядник бюджет",
     "казенн",
-    "орган влади",
+    "орган державної влади",
+    "орган місцевого самоврядування",
+    "державний замовник",
+    "державного замовника",
+    "державне підприємство",
+    "державного підприємства",
+    "державне майно",
     "державної власності",
-    "кабінет міністрів",
+    "публічні закупівлі",
+    "публічних закупівель",
 )
 
 FINANCIAL_LEASING_KEYWORDS = (
@@ -471,13 +479,17 @@ class N8nIntegrationService:
             package.metadata_json = metadata
             return f"Пакет прийнято, але Ollama не змогла сформувати відповідь: {exc}"
 
+        answer = self._sanitize_answer_for_package(
+            answer=result.answer,
+            package_text=command.package_text,
+        )
         package.status = "processed"
         metadata = dict(package.metadata_json or {})
         metadata["llm_model"] = result.model
-        metadata["llm_answer"] = result.answer
+        metadata["llm_answer"] = answer
         metadata["processed_at"] = datetime.now(UTC).isoformat()
         package.metadata_json = metadata
-        return result.answer
+        return answer
 
     def _build_package_analysis_command(
         self,
@@ -581,7 +593,7 @@ class N8nIntegrationService:
         fragments: list[SourceFragment],
     ) -> list[SourceFragment]:
         package_lower = package_text.lower()
-        has_public_sector_context = any(keyword in package_lower for keyword in PUBLIC_SECTOR_KEYWORDS)
+        has_public_sector_context = self._has_public_sector_context(package_lower)
         has_leasing_context = any(keyword in package_lower for keyword in FINANCIAL_LEASING_KEYWORDS)
 
         filtered: list[SourceFragment] = []
@@ -599,6 +611,39 @@ class N8nIntegrationService:
                 continue
             filtered.append(fragment)
         return filtered
+
+    def _sanitize_answer_for_package(self, *, answer: str, package_text: str) -> str:
+        if self._has_public_sector_context(package_text.lower()):
+            return answer
+
+        forbidden_keywords = (
+            "публічн",
+            "закупів",
+            "prozorro",
+            "прозорро",
+            "державний замовник",
+            "державного замовника",
+            "державне майно",
+            "державної власності",
+        )
+        clean_lines: list[str] = []
+        for line in answer.splitlines():
+            if not any(keyword in line.lower() for keyword in forbidden_keywords):
+                clean_lines.append(line)
+                continue
+
+            sentences = re.split(r"(?<=[.!?])\s+", line)
+            kept = [
+                sentence
+                for sentence in sentences
+                if sentence and not any(keyword in sentence.lower() for keyword in forbidden_keywords)
+            ]
+            if kept:
+                clean_lines.append(" ".join(kept))
+        return "\n".join(clean_lines).strip()
+
+    def _has_public_sector_context(self, text_lower: str) -> bool:
+        return any(keyword in text_lower for keyword in PUBLIC_SECTOR_KEYWORDS)
 
     def _attach_recent_processed_context(
         self,
