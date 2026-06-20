@@ -13,4 +13,7 @@ def test_ollama_prompt_prioritizes_document_facts_over_irrelevant_sources() -> N
 
     assert "Факти з матеріалів пакета мають пріоритет" in system_prompt
     assert "Не припускай державні закупівлі" in system_prompt
+    assert "Не вказуй номери статей" in system_prompt
+    assert "Не згадуй відсутні в документі теми" in system_prompt
     assert "якщо сторони є приватними/комерційними суб'єктами" in user_prompt.lower()
+    assert "не аналізуй і не згадуй державні закупівлі" in user_prompt.lower()
