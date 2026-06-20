@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 1536
     jur_ollama_base_url: str | None = None
     jur_ollama_model: str = "qwen3:8b"
-    jur_ollama_timeout_seconds: int = 180
+    jur_ollama_timeout_seconds: int = 900
     cors_origins: list[str] = Field(default_factory=list)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
