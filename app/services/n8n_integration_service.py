@@ -49,6 +49,29 @@ class IntakeItemNotFoundError(Exception):
     pass
 
 
+PUBLIC_SECTOR_KEYWORDS = (
+    "держав",
+    "комунальн",
+    "публічн",
+    "закупів",
+    "prozorro",
+    "прозорро",
+    "бюджет",
+    "казенн",
+    "орган влади",
+    "державної власності",
+    "кабінет міністрів",
+)
+
+FINANCIAL_LEASING_KEYWORDS = (
+    "фінансовий лізинг",
+    "фінансового лізингу",
+    "лізинг",
+    "лізингодав",
+    "лізингоодерж",
+)
+
+
 @dataclass(frozen=True)
 class PackageItemCounts:
     total: int
@@ -505,6 +528,10 @@ class N8nIntegrationService:
                 )
                 for result in results
             ]
+            source_fragments = self._filter_source_fragments_for_package(
+                package_text=package_text,
+                fragments=source_fragments,
+            )
 
         return LegalPackageAnalysisCommand(
             question=question,
@@ -514,6 +541,32 @@ class N8nIntegrationService:
             source_fragments=source_fragments,
             attachment_notes=attachment_notes,
         )
+
+    def _filter_source_fragments_for_package(
+        self,
+        *,
+        package_text: str,
+        fragments: list[SourceFragment],
+    ) -> list[SourceFragment]:
+        package_lower = package_text.lower()
+        has_public_sector_context = any(keyword in package_lower for keyword in PUBLIC_SECTOR_KEYWORDS)
+        has_leasing_context = any(keyword in package_lower for keyword in FINANCIAL_LEASING_KEYWORDS)
+
+        filtered: list[SourceFragment] = []
+        for fragment in fragments:
+            fragment_lower = fragment.text.lower()
+            if (
+                not has_public_sector_context
+                and any(keyword in fragment_lower for keyword in PUBLIC_SECTOR_KEYWORDS)
+            ):
+                continue
+            if (
+                not has_leasing_context
+                and any(keyword in fragment_lower for keyword in FINANCIAL_LEASING_KEYWORDS)
+            ):
+                continue
+            filtered.append(fragment)
+        return filtered
 
     def _find_intake_item_for_extraction(
         self,

@@ -17,7 +17,7 @@ from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.n8n_schema import N8nProcessPackageRequest
 from app.services.n8n_integration_service import N8nIntegrationService
-from app.services.ollama_service import LegalPackageAnalysisCommand, LegalPackageAnalysisResult
+from app.services.ollama_service import LegalPackageAnalysisCommand, LegalPackageAnalysisResult, SourceFragment
 
 
 @pytest.fixture()
@@ -630,6 +630,34 @@ class FakeLegalAnalysisService:
     def analyze_package(self, command: LegalPackageAnalysisCommand) -> LegalPackageAnalysisResult:
         self.command = command
         return LegalPackageAnalysisResult(answer="LLM відповідь для юриста.", model="fake-qwen")
+
+
+def test_package_source_filter_removes_public_sector_fragments_for_private_contract(
+    db_session: Session,
+) -> None:
+    service = N8nIntegrationService(db_session)
+
+    fragments = [
+        SourceFragment(
+            document_id="public-source",
+            chunk_index=1,
+            score=0.9,
+            text="Порядок передачі об'єктів державної власності та публічні закупівлі.",
+        ),
+        SourceFragment(
+            document_id="private-source",
+            chunk_index=2,
+            score=0.8,
+            text="Загальні умови договору про надання послуг та виконання зобов'язань.",
+        ),
+    ]
+
+    filtered = service._filter_source_fragments_for_package(
+        package_text="Приватне акціонерне товариство уклало договір з фізичною особою-підприємцем.",
+        fragments=fragments,
+    )
+
+    assert [fragment.document_id for fragment in filtered] == ["private-source"]
 
 
 def test_telegram_batch_menu_keeps_materials_pending(
