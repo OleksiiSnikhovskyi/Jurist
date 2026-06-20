@@ -912,6 +912,8 @@ def test_start_package_processing_can_return_ollama_answer(
     assert "договір поставки" in fake_llm.command.package_text
     db_session.refresh(package)
     assert package.metadata_json["llm_model"] == "fake-qwen"
+    assert package.metadata_json["processing_timings"]["source_fragment_count"] >= 0
+    assert package.metadata_json["processing_timings"]["total_seconds"] >= 0
 
 
 def test_start_package_processing_uses_active_telegram_client_when_not_explicit(

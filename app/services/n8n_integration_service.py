@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from time import perf_counter
 from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
@@ -455,15 +456,18 @@ class N8nIntegrationService:
         if not self.legal_analysis_service.is_configured():
             return "Пакет поставлено в чергу на обробку. LLM ще не налаштовано для FastAPI."
 
-        command = self._build_package_analysis_command(
+        started_at = perf_counter()
+        command, timings = self._build_package_analysis_command(
             package=package,
             workspace_id=workspace_id,
             user_id=user_id,
         )
+        timings["total_before_llm_seconds"] = round(perf_counter() - started_at, 3)
         if not command.package_text.strip():
             package.status = "waiting_for_text_extraction"
             metadata = dict(package.metadata_json or {})
             metadata["processing_note"] = "No extracted text is available for LLM analysis."
+            metadata["processing_timings"] = timings
             package.metadata_json = metadata
             return (
                 "Пакет містить вкладення, але текст із файлів ще не витягнуто. "
@@ -471,11 +475,14 @@ class N8nIntegrationService:
             )
 
         try:
+            llm_started_at = perf_counter()
             result = self.legal_analysis_service.analyze_package(command)
+            timings["ollama_seconds"] = round(perf_counter() - llm_started_at, 3)
         except OllamaRequestError as exc:
             package.status = "llm_error"
             metadata = dict(package.metadata_json or {})
             metadata["llm_error"] = str(exc)
+            metadata["processing_timings"] = timings
             package.metadata_json = metadata
             return f"Пакет прийнято, але Ollama не змогла сформувати відповідь: {exc}"
 
@@ -488,6 +495,12 @@ class N8nIntegrationService:
         metadata["llm_model"] = result.model
         metadata["llm_answer"] = answer
         metadata["processed_at"] = datetime.now(UTC).isoformat()
+        metadata["processing_timings"] = {
+            **timings,
+            "total_seconds": round(perf_counter() - started_at, 3),
+            "package_text_chars": len(command.package_text),
+            "source_fragment_count": len(command.source_fragments),
+        }
         package.metadata_json = metadata
         return answer
 
@@ -497,18 +510,26 @@ class N8nIntegrationService:
         package: N8nIntakePackage,
         workspace_id: str,
         user_id: str,
-    ) -> LegalPackageAnalysisCommand:
+    ) -> tuple[LegalPackageAnalysisCommand, dict[str, float | int]]:
+        started_at = perf_counter()
         package_metadata = dict(package.metadata_json or {})
         source_items = self._collect_followup_source_items(
             package_metadata.get("followup_source_package_id")
         )
+        timings: dict[str, float | int] = {
+            "source_items_count": len(source_items),
+            "source_items_seconds": round(perf_counter() - started_at, 3),
+        }
 
+        items_started_at = perf_counter()
         items = (
             self.db.query(N8nIntakeItem)
             .filter(N8nIntakeItem.package_id == package.id)
             .order_by(N8nIntakeItem.created_at.asc())
             .all()
         )
+        timings["items_count"] = len(items)
+        timings["items_seconds"] = round(perf_counter() - items_started_at, 3)
         source_text_parts = [
             f"- [попередній пакет: {item.item_type}] {item.text.strip()}"
             for item in source_items
@@ -539,16 +560,19 @@ class N8nIntegrationService:
         client_context = None
         client_profile_id = package_metadata.get("client_profile_id")
         if client_profile_id:
+            client_started_at = perf_counter()
             client = self.agent_context_service.load_client_context(
                 client_profile_id=client_profile_id,
                 workspace_id=workspace_id,
                 user_id=user_id,
             )
             client_context = client.text if client else None
+            timings["client_context_seconds"] = round(perf_counter() - client_started_at, 3)
 
         source_fragments: list[SourceFragment] = []
         query_text = f"{question}\n{package_text}".strip()
         if query_text:
+            vector_started_at = perf_counter()
             results = self.vector_search_service.search(
                 VectorSearchCommand(
                     workspace_id=workspace_id,
@@ -557,6 +581,8 @@ class N8nIntegrationService:
                     limit=6,
                 )
             )
+            timings["vector_search_seconds"] = round(perf_counter() - vector_started_at, 3)
+            timings["vector_result_count"] = len(results)
             source_fragments = [
                 SourceFragment(
                     document_id=result.document_id,
@@ -570,14 +596,18 @@ class N8nIntegrationService:
                 package_text=package_text,
                 fragments=source_fragments,
             )
+            timings["filtered_source_fragment_count"] = len(source_fragments)
 
-        return LegalPackageAnalysisCommand(
-            question=question,
-            package_text=package_text,
-            lawyer_system_prompt=lawyer_system_prompt,
-            client_context=client_context,
-            source_fragments=source_fragments,
-            attachment_notes=attachment_notes,
+        return (
+            LegalPackageAnalysisCommand(
+                question=question,
+                package_text=package_text,
+                lawyer_system_prompt=lawyer_system_prompt,
+                client_context=client_context,
+                source_fragments=source_fragments,
+                attachment_notes=attachment_notes,
+            ),
+            timings,
         )
 
     def _filter_source_fragments_for_package(
