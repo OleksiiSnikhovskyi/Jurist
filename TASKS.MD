@@ -85,7 +85,8 @@
 - [x] Add migration for `document_chunks.embedding` as `vector(1024)` plus pgvector/search indexes.
 - [x] Add resume-safe document chunk re-embedding script.
 - [x] Move PostgreSQL vector search from Python cosine scoring to pgvector SQL ordering.
-- [ ] Run production migration and re-embed all chunks.
+- [x] Run production pgvector migration on `jur_db`.
+- [ ] Re-embed all production chunks with `bge-m3`.
 - [ ] Add structured Telegram/RAG timing logs.
 - [ ] Add Obsidian registry/aliases sync for exact legal-source routing.
 
