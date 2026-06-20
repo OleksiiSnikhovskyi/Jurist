@@ -52,6 +52,7 @@ class OllamaLegalAnalysisService:
         payload = {
             "model": self.settings.jur_ollama_model,
             "stream": False,
+            "think": self.settings.jur_ollama_think,
             "options": {
                 "num_ctx": self.settings.jur_ollama_num_ctx,
                 "num_predict": self.settings.jur_ollama_num_predict,

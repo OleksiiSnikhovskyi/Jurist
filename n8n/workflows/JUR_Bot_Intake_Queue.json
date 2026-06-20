@@ -46,7 +46,7 @@
         "specifyBody": "json",
         "jsonBody": "={{$json}}",
         "options": {
-          "timeout": 300000
+          "timeout": 900000
         }
       },
       "id": "jur-send-intake-api",

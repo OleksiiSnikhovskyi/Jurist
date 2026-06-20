@@ -50,6 +50,13 @@ def test_telegram_intake_template_has_required_actions() -> None:
     assert "Build Auto Analysis Reply" in workflow_text
     assert "Telegram Auto Analysis Reply" in workflow_text
 
+    node_timeouts = {
+        node["name"]: node.get("parameters", {}).get("options", {}).get("timeout")
+        for node in workflow["nodes"]
+    }
+    assert node_timeouts["Send Intake Event To API"] == 900000
+    assert node_timeouts["Process Auto Extracted Package"] == 900000
+
 
 def test_obsidian_template_uses_batch_processing() -> None:
     workflow = json.loads((WORKFLOW_DIR / "JUR_Obsidian_Vault_Sync.json").read_text(encoding="utf-8"))

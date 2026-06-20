@@ -1,4 +1,10 @@
-from app.services.ollama_service import LegalPackageAnalysisCommand, build_system_prompt, build_user_prompt
+from app.config import Settings
+from app.services.ollama_service import (
+    LegalPackageAnalysisCommand,
+    OllamaLegalAnalysisService,
+    build_system_prompt,
+    build_user_prompt,
+)
 
 
 def test_ollama_prompt_prioritizes_document_facts_over_irrelevant_sources() -> None:
@@ -17,3 +23,36 @@ def test_ollama_prompt_prioritizes_document_facts_over_irrelevant_sources() -> N
     assert "Не згадуй відсутні в документі теми" in system_prompt
     assert "якщо сторони є приватними/комерційними суб'єктами" in user_prompt.lower()
     assert "не аналізуй і не згадуй державні закупівлі" in user_prompt.lower()
+
+
+def test_ollama_payload_disables_qwen_thinking_for_telegram_answers() -> None:
+    class CaptureService(OllamaLegalAnalysisService):
+        def _post_json(self, path: str, payload: dict) -> dict:
+            self.path = path
+            self.payload = payload
+            return {"message": {"content": "Готово."}}
+
+    service = CaptureService(
+        Settings(
+            jur_ollama_base_url="http://ollama:11434",
+            jur_ollama_model="qwen3:8b",
+            jur_ollama_think=False,
+            jur_ollama_num_ctx=16384,
+            jur_ollama_num_predict=3072,
+        )
+    )
+
+    result = service.analyze_package(
+        LegalPackageAnalysisCommand(
+            question="Проаналізуй договір.",
+            package_text="Договір між двома комерційними компаніями.",
+            lawyer_system_prompt="Працюй як договірний юрист.",
+        )
+    )
+
+    assert result.answer == "Готово."
+    assert service.path == "/api/chat"
+    assert service.payload["model"] == "qwen3:8b"
+    assert service.payload["think"] is False
+    assert service.payload["options"]["num_ctx"] == 16384
+    assert service.payload["options"]["num_predict"] == 3072

@@ -43,6 +43,8 @@ function applyBatchMenu(workflow) {
     },
   ];
 
+  const longTimeoutNodes = new Set(["Send Intake Event To API", "Process Auto Extracted Package"]);
+
   for (const nodeName of [
     "Send Intake Event To API",
     "Attach Document Extracted Text To API",
@@ -53,7 +55,7 @@ function applyBatchMenu(workflow) {
     if (httpNode) {
       httpNode.parameters.options = {
         ...(httpNode.parameters.options || {}),
-        timeout: nodeName === "Process Auto Extracted Package" ? 900000 : 300000,
+        timeout: longTimeoutNodes.has(nodeName) ? 900000 : 300000,
       };
     }
   }
