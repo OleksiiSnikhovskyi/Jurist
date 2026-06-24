@@ -9,6 +9,8 @@ CATALOG_RETRIES="${CATALOG_RETRIES:-5}"
 CATALOG_RETRY_SECONDS="${CATALOG_RETRY_SECONDS:-30}"
 PAUSE_BETWEEN_BATCHES="${PAUSE_BETWEEN_BATCHES:-10}"
 MAX_BATCHES="${MAX_BATCHES:-0}"
+CATALOG_TRANSIENT_STOP_SLEEP="${CATALOG_TRANSIENT_STOP_SLEEP:-300}"
+CATALOG_TRANSIENT_STOP_MAX="${CATALOG_TRANSIENT_STOP_MAX:-20}"
 LOCK_DIR="${PROJECT_DIR}/legal_sources/.rada_bulk_until_complete.lock"
 LOG_DIR="${PROJECT_DIR}/logs"
 
@@ -29,6 +31,7 @@ fi
 trap 'rmdir "${LOCK_DIR}" 2>/dev/null || true' EXIT
 
 batch_no=0
+transient_stop_count=0
 while true; do
   batch_no=$((batch_no + 1))
   if [[ "${MAX_BATCHES}" != "0" && "${batch_no}" -gt "${MAX_BATCHES}" ]]; then
@@ -110,10 +113,25 @@ PY
       break
       ;;
     stopped:*)
-      echo "Backfill stopped before completion: ${should_stop#stopped:}" >&2
-      exit 3
+      reason="${should_stop#stopped:}"
+      case "${reason}" in
+        catalog_fetch_failed:*)
+          transient_stop_count=$((transient_stop_count + 1))
+          if [[ "${CATALOG_TRANSIENT_STOP_MAX}" != "0" && "${transient_stop_count}" -gt "${CATALOG_TRANSIENT_STOP_MAX}" ]]; then
+            echo "Backfill hit ${transient_stop_count} consecutive transient catalog failures; stopping: ${reason}" >&2
+            exit 3
+          fi
+          echo "Backfill hit transient catalog failure ${transient_stop_count}/${CATALOG_TRANSIENT_STOP_MAX}; retrying after ${CATALOG_TRANSIENT_STOP_SLEEP}s: ${reason}" >&2
+          sleep "${CATALOG_TRANSIENT_STOP_SLEEP}"
+          ;;
+        *)
+          echo "Backfill stopped before completion: ${reason}" >&2
+          exit 3
+          ;;
+      esac
       ;;
     continue)
+      transient_stop_count=0
       echo "Batch ${batch_no} complete; continuing after ${PAUSE_BETWEEN_BATCHES}s."
       sleep "${PAUSE_BETWEEN_BATCHES}"
       ;;
