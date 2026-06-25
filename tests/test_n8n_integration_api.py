@@ -17,7 +17,12 @@ from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.n8n_schema import N8nProcessPackageRequest
 from app.services.n8n_integration_service import N8nIntegrationService
-from app.services.ollama_service import LegalPackageAnalysisCommand, LegalPackageAnalysisResult, SourceFragment
+from app.services.ollama_service import (
+    LegalPackageAnalysisCommand,
+    LegalPackageAnalysisResult,
+    SourceFragment,
+)
+from app.services.vector_search_service import VectorSearchCommand, VectorSearchResult
 
 
 @pytest.fixture()
@@ -632,6 +637,46 @@ class FakeLegalAnalysisService:
         return LegalPackageAnalysisResult(answer="LLM відповідь для юриста.", model="fake-qwen")
 
 
+class FakeVectorSearchService:
+    def __init__(self) -> None:
+        self.command: VectorSearchCommand | None = None
+
+    def search(self, command: VectorSearchCommand) -> list[VectorSearchResult]:
+        self.command = command
+        return [
+            VectorSearchResult(
+                chunk_id="chunk-public",
+                document_id="public-source",
+                workspace_id=command.workspace_id,
+                chunk_index=1,
+                chunk_text=(
+                    "Закон України про публічні закупівлі, державного замовника "
+                    "і державне майно."
+                ),
+                score=0.91,
+            ),
+            VectorSearchResult(
+                chunk_id="chunk-contract",
+                document_id="contract-source",
+                workspace_id=command.workspace_id,
+                chunk_index=2,
+                chunk_text=(
+                    "Договір про надання послуг: істотні умови, виконання "
+                    "зобов'язань, оплата і відповідальність сторін."
+                ),
+                score=0.87,
+            ),
+            VectorSearchResult(
+                chunk_id="chunk-random",
+                document_id="random-source",
+                workspace_id=command.workspace_id,
+                chunk_index=3,
+                chunk_text="Порядок адміністративного погодження пропозицій органами влади.",
+                score=0.81,
+            ),
+        ]
+
+
 def test_package_source_filter_removes_public_sector_fragments_for_private_contract(
     db_session: Session,
 ) -> None:
@@ -698,6 +743,72 @@ def test_llm_answer_sanitizer_removes_procurement_when_private_contract(
     assert "приватних сторін" in answer
     assert "строки приймання" in answer
 
+
+def test_contract_followup_routes_search_to_document_facts_and_filters_sources(
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    package = N8nIntakePackage(
+        id="package-contract-followup",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        status="queued",
+        question="Які рекомендації щодо удосконалення цього договору? По кожному з пунктів?",
+        metadata_json={"followup_source_package_id": "source-contract-package"},
+    )
+    source_package = N8nIntakePackage(
+        id="source-contract-package",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        status="processed",
+        question="Проаналізуй договір",
+    )
+    db_session.add_all([package, source_package])
+    db_session.add(
+        N8nIntakeItem(
+            package_id="source-contract-package",
+            item_type="document",
+            text=(
+                "ПрАТ Л-КАПІТАЛ уклало договір з ТОВ Виконавець про надання "
+                "консультаційних послуг. Оплата здійснюється після приймання послуг."
+            ),
+        )
+    )
+    db_session.commit()
+    fake_llm = FakeLegalAnalysisService()
+    fake_vector = FakeVectorSearchService()
+
+    response = N8nIntegrationService(
+        db_session,
+        legal_analysis_service=fake_llm,
+        vector_search_service=fake_vector,
+    ).start_package_processing(
+        request=N8nProcessPackageRequest(
+            package_id="package-contract-followup",
+            requested_agent="contract_review",
+            question="Які рекомендації щодо удосконалення цього договору? По кожному з пунктів?",
+        )
+    )
+
+    assert response.status == "processed"
+    assert fake_vector.command is not None
+    assert fake_vector.command.limit == 8
+    assert "ПрАТ Л-КАПІТАЛ" in fake_vector.command.query
+    assert "публічні закупівлі" not in fake_vector.command.query.lower()
+    assert fake_llm.command is not None
+    assert [fragment.document_id for fragment in fake_llm.command.source_fragments] == [
+        "contract-source"
+    ]
+    db_session.refresh(package)
+    assert (
+        package.metadata_json["processing_timings"]["query_route"]
+        == "contract_document_followup"
+    )
 
 def test_telegram_batch_menu_keeps_materials_pending(
     client: TestClient,

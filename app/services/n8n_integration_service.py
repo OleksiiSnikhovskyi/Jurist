@@ -80,6 +80,24 @@ FINANCIAL_LEASING_KEYWORDS = (
     "лізингоодерж",
 )
 
+CONTRACT_KEYWORDS = (
+    "догов",
+    "контракт",
+    "угод",
+    "сторон",
+    "замовник",
+    "підрядник",
+    "постачальник",
+    "виконавець",
+    "покупець",
+    "продавець",
+)
+
+CONTRACT_SEARCH_HINT = (
+    "договір приватне право господарські зобов'язання істотні умови виконання "
+    "оплата строки відповідальність приймання розірвання"
+)
+
 FOLLOWUP_REFERENCE_KEYWORDS = (
     "цей догов",
     "цього догов",
@@ -504,19 +522,67 @@ class N8nIntegrationService:
         package.metadata_json = metadata
         return answer
 
+    def _classify_query_route(
+        self,
+        *,
+        question: str,
+        package_text: str,
+        source_items_count: int,
+    ) -> str:
+        combined = f"{question}\n{package_text}".lower()
+        has_contract_context = any(keyword in combined for keyword in CONTRACT_KEYWORDS)
+        if source_items_count and has_contract_context:
+            return "contract_document_followup"
+        if has_contract_context:
+            return "contract_document"
+        if source_items_count:
+            return "document_followup"
+        return "general_legal"
+
+    def _build_legal_search_query(
+        self,
+        *,
+        route: str,
+        question: str,
+        package_text: str,
+        client_context: str | None,
+    ) -> str:
+        parts = [question.strip()]
+        if route.startswith("contract_document"):
+            facts = self._extract_contract_search_facts(package_text)
+            parts = [question.strip(), facts, CONTRACT_SEARCH_HINT]
+        elif client_context:
+            parts.append(client_context.strip())
+        return "\n".join(part for part in parts if part).strip()
+
+    def _extract_contract_search_facts(self, package_text: str) -> str:
+        lines = []
+        for raw_line in package_text.splitlines():
+            line = raw_line.strip(" -")
+            if not line:
+                continue
+            line_lower = line.lower()
+            if any(keyword in line_lower for keyword in CONTRACT_KEYWORDS):
+                lines.append(line[:500])
+            if len(lines) >= 6:
+                break
+        if not lines:
+            return package_text[:1200]
+        return "\n".join(lines)
+
     def _build_package_analysis_command(
         self,
         *,
         package: N8nIntakePackage,
         workspace_id: str,
         user_id: str,
-    ) -> tuple[LegalPackageAnalysisCommand, dict[str, float | int]]:
+    ) -> tuple[LegalPackageAnalysisCommand, dict[str, float | int | str]]:
         started_at = perf_counter()
         package_metadata = dict(package.metadata_json or {})
         source_items = self._collect_followup_source_items(
             package_metadata.get("followup_source_package_id")
         )
-        timings: dict[str, float | int] = {
+        timings: dict[str, float | int | str] = {
             "source_items_count": len(source_items),
             "source_items_seconds": round(perf_counter() - started_at, 3),
         }
@@ -570,7 +636,18 @@ class N8nIntegrationService:
             timings["client_context_seconds"] = round(perf_counter() - client_started_at, 3)
 
         source_fragments: list[SourceFragment] = []
-        query_text = f"{question}\n{package_text}".strip()
+        query_route = self._classify_query_route(
+            question=question,
+            package_text=package_text,
+            source_items_count=len(source_items),
+        )
+        timings["query_route"] = query_route
+        query_text = self._build_legal_search_query(
+            route=query_route,
+            question=question,
+            package_text=package_text,
+            client_context=client_context,
+        )
         if query_text:
             vector_started_at = perf_counter()
             results = self.vector_search_service.search(
@@ -578,7 +655,7 @@ class N8nIntegrationService:
                     workspace_id=workspace_id,
                     user_id=user_id,
                     query=query_text,
-                    limit=6,
+                    limit=8 if query_route.startswith("contract_document") else 6,
                 )
             )
             timings["vector_search_seconds"] = round(perf_counter() - vector_started_at, 3)
@@ -595,6 +672,7 @@ class N8nIntegrationService:
             source_fragments = self._filter_source_fragments_for_package(
                 package_text=package_text,
                 fragments=source_fragments,
+                route=query_route,
             )
             timings["filtered_source_fragment_count"] = len(source_fragments)
 
@@ -615,10 +693,13 @@ class N8nIntegrationService:
         *,
         package_text: str,
         fragments: list[SourceFragment],
+        route: str = "general_legal",
     ) -> list[SourceFragment]:
         package_lower = package_text.lower()
         has_public_sector_context = self._has_public_sector_context(package_lower)
-        has_leasing_context = any(keyword in package_lower for keyword in FINANCIAL_LEASING_KEYWORDS)
+        has_leasing_context = any(
+            keyword in package_lower for keyword in FINANCIAL_LEASING_KEYWORDS
+        )
 
         filtered: list[SourceFragment] = []
         for fragment in fragments:
@@ -633,8 +714,31 @@ class N8nIntegrationService:
                 and any(keyword in fragment_lower for keyword in FINANCIAL_LEASING_KEYWORDS)
             ):
                 continue
+            if route.startswith("contract_document") and not self._is_fragment_relevant_to_contract(
+                fragment_lower
+            ):
+                continue
             filtered.append(fragment)
-        return filtered
+        return filtered[:6]
+
+    def _is_fragment_relevant_to_contract(self, fragment_lower: str) -> bool:
+        contract_terms = (
+            "догов",
+            "зобов'яз",
+            "зобов’яз",
+            "послуг",
+            "підряд",
+            "поставк",
+            "виконан",
+            "оплат",
+            "строк",
+            "відповідальн",
+            "прийман",
+            "розірван",
+            "цивільн",
+            "господарськ",
+        )
+        return any(term in fragment_lower for term in contract_terms)
 
     def _sanitize_answer_for_package(self, *, answer: str, package_text: str) -> str:
         if self._has_public_sector_context(package_text.lower()):
