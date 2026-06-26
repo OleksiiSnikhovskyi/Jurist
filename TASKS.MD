@@ -86,8 +86,8 @@
 - [x] Add resume-safe document chunk re-embedding script.
 - [x] Move PostgreSQL vector search from Python cosine scoring to pgvector SQL ordering.
 - [x] Run production pgvector migration on `jur_db`.
-- [ ] Re-embed all production chunks with `bge-m3`.
-- [ ] Add structured Telegram/RAG timing logs.
+- [x] Re-embed all production chunks with `bge-m3` (`document_chunks.embedding` null count is 0).
+- [x] Add structured Telegram/RAG timing logs.
 - [ ] Add Obsidian registry/aliases sync for exact legal-source routing.
 
 ## Stage 7B: Knowledge Corpus Completion
@@ -118,7 +118,7 @@
 
 ## Stage 9: Legal Answer Production
 
-- [ ] Add query router so contract-only questions use active document chunks, exact legal references use exact lookup, and general questions use hybrid search.
+- [x] Add query router so contract-only questions use active document chunks, exact legal references use exact lookup, and general questions use hybrid search.
 - [ ] Connect package processing to document extraction, chunking, vector search, and agents.
 - [ ] Store generated answers in `legal_opinions`.
 - [ ] Add lawyer review/approval state for generated opinions.

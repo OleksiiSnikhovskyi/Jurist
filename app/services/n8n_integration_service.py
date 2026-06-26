@@ -1,3 +1,5 @@
+import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -37,6 +39,9 @@ from app.services.ollama_service import (
     SourceFragment,
 )
 from app.services.vector_search_service import VectorSearchCommand, VectorSearchService
+
+
+logger = logging.getLogger(__name__)
 
 
 class IntakePackageNotFoundError(Exception):
@@ -527,6 +532,13 @@ class N8nIntegrationService:
             metadata["processing_note"] = "No extracted text is available for LLM analysis."
             metadata["processing_timings"] = timings
             package.metadata_json = metadata
+            self._log_package_processing_event(
+                event="waiting_for_text_extraction",
+                package=package,
+                command=command,
+                timings=timings,
+                started_at=started_at,
+            )
             return (
                 "Пакет містить вкладення, але текст із файлів ще не витягнуто. "
                 "Потрібно підключити завантаження файлів Telegram/OCR/парсинг документів перед LLM-аналізом."
@@ -549,6 +561,14 @@ class N8nIntegrationService:
             metadata["llm_error"] = str(exc)
             metadata["processing_timings"] = timings
             package.metadata_json = metadata
+            self._log_package_processing_event(
+                event="ollama_error",
+                package=package,
+                command=command,
+                timings=timings,
+                started_at=started_at,
+                error=str(exc),
+            )
             return f"Пакет прийнято, але Ollama не змогла сформувати відповідь: {exc}"
 
         if self._is_incomplete_llm_answer(result.answer, command.response_mode):
@@ -559,6 +579,14 @@ class N8nIntegrationService:
             metadata["llm_model"] = result.model
             metadata["processing_timings"] = timings
             package.metadata_json = metadata
+            self._log_package_processing_event(
+                event="incomplete_llm_answer",
+                package=package,
+                command=command,
+                timings=timings,
+                started_at=started_at,
+                model=result.model,
+            )
             return (
                 "Документ розпізнано, але модель повернула неповну відповідь. "
                 "Натисніть 'Почати обробку' ще раз або уточніть запит."
@@ -580,7 +608,59 @@ class N8nIntegrationService:
             "source_fragment_count": len(command.source_fragments),
         }
         package.metadata_json = metadata
+        self._log_package_processing_event(
+            event="processed",
+            package=package,
+            command=command,
+            timings=metadata["processing_timings"],
+            started_at=started_at,
+            model=result.model,
+        )
         return answer
+
+    def _log_package_processing_event(
+        self,
+        *,
+        event: str,
+        package: N8nIntakePackage,
+        command: LegalPackageAnalysisCommand,
+        timings: dict[str, float | int | str],
+        started_at: float,
+        model: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        payload: dict[str, object] = {
+            "event": event,
+            "package_id": package.id,
+            "workspace_id": package.workspace_id,
+            "user_id": package.user_id,
+            "status": package.status,
+            "requested_agent": package.requested_agent,
+            "query_route": timings.get("query_route"),
+            "response_mode": command.response_mode,
+            "source_fragment_count": timings.get(
+                "source_fragment_count",
+                timings.get("filtered_source_fragment_count", len(command.source_fragments)),
+            ),
+            "vector_result_count": timings.get("vector_result_count"),
+            "total_seconds": timings.get("total_seconds", round(perf_counter() - started_at, 3)),
+            "total_before_llm_seconds": timings.get("total_before_llm_seconds"),
+            "vector_search_seconds": timings.get("vector_search_seconds"),
+            "ollama_seconds": timings.get("ollama_seconds"),
+            "ollama_retry_seconds": timings.get("ollama_retry_seconds"),
+            "ollama_retry_used": timings.get("ollama_retry_used", 0),
+            "package_text_chars": timings.get("package_text_chars", len(command.package_text)),
+            "llm_package_text_chars": timings.get("llm_package_text_chars"),
+        }
+        if model:
+            payload["model"] = model
+        if error:
+            payload["error"] = error
+        logger.info(
+            "jur.telegram_rag_processing %s",
+            json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            extra={"jur_timing": payload},
+        )
 
     def _retry_command_for_incomplete_answer(
         self,
@@ -2012,4 +2092,5 @@ class N8nIntegrationService:
             attachments=attachments,
             text_messages=text_messages,
         )
+
 

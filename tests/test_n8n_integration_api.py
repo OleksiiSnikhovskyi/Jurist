@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Generator
 
 import pytest
@@ -1212,6 +1213,7 @@ def test_telegram_followup_resolves_previous_followup_to_original_document(
 
 def test_start_package_processing_can_return_ollama_answer(
     db_session: Session,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     _seed_workspace(db_session)
     _seed_lawyer_profile(db_session)
@@ -1228,6 +1230,7 @@ def test_start_package_processing_can_return_ollama_answer(
     db_session.add(N8nIntakeItem(package_id="package-llm", item_type="text", text="Є договір поставки."))
     db_session.commit()
     fake_llm = FakeLegalAnalysisService()
+    caplog.set_level(logging.INFO, logger="app.services.n8n_integration_service")
 
     response = N8nIntegrationService(
         db_session,
@@ -1249,6 +1252,18 @@ def test_start_package_processing_can_return_ollama_answer(
     assert package.metadata_json["llm_model"] == "fake-qwen"
     assert package.metadata_json["processing_timings"]["source_fragment_count"] >= 0
     assert package.metadata_json["processing_timings"]["total_seconds"] >= 0
+    timing_records = [
+        record.jur_timing
+        for record in caplog.records
+        if record.message.startswith("jur.telegram_rag_processing ")
+    ]
+    assert timing_records
+    assert timing_records[-1]["event"] == "processed"
+    assert timing_records[-1]["package_id"] == "package-llm"
+    assert timing_records[-1]["query_route"] == "contract_document"
+    assert timing_records[-1]["response_mode"] == "legal_analysis"
+    assert timing_records[-1]["model"] == "fake-qwen"
+    assert timing_records[-1]["total_seconds"] >= 0
 
 
 def test_start_package_processing_uses_active_telegram_client_when_not_explicit(
@@ -1510,6 +1525,4 @@ def test_obsidian_sync_note_creates_document_and_chunks(
     assert document.document_type == "obsidian_markdown"
     assert document.file_path == "obsidian://cases/case-1.md"
     assert db_session.query(DocumentChunk).filter_by(document_id=document.id).count() == 1
-
-
 
