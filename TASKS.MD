@@ -94,8 +94,8 @@
 
 - [ ] Continue Rada backfill until the official catalog is fully processed.
 - [ ] Keep only valid/current official documents in the production manifest.
-- [ ] Rebuild and validate `priority_manifest.csv` after corpus completion.
-- [ ] Re-ingest or refresh legal corpus chunks after embedding migration when needed.
+- [x] Rebuild and validate `priority_manifest.csv` after corpus completion batches; current production manifest has no missing files.
+- [x] Re-ingest or refresh legal corpus chunks after embedding migration when needed; current `document_chunks.embedding` null count is 0.
 
 ## Stage 8: Telegram User Onboarding
 

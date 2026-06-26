@@ -120,5 +120,7 @@ Imported into `https://n8n.csc-ua.tech` on 2026-06-13:
 - `JUR_Bot_Intake_Queue`: `nWAfwIrKQt1kBgnJ` (`https://n8n.csc-ua.tech/workflow/nWAfwIrKQt1kBgnJ`)
 - `JUR_Document_Processing_Start`: `tvcUdTGWwatqdS4e` (`https://n8n.csc-ua.tech/workflow/tvcUdTGWwatqdS4e`)
 - `JUR_Obsidian_Vault_Sync`: `NGubhhjGjGp8lh57` (`https://n8n.csc-ua.tech/workflow/NGubhhjGjGp8lh57`)
+- `JUR_Rada_Law_Sync_Qwen`: `idhN3BnLzF6VtTyp` (`https://n8n.csc-ua.tech/workflow/idhN3BnLzF6VtTyp`)
 
 `JUR_Bot_Intake_Queue` uses the n8n Telegram credential `PravnykAi`. The workflows are active, but production processing still requires `JUR_API_BASE_URL` to point to a reachable FastAPI deployment.
+
