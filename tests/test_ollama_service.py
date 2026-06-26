@@ -73,5 +73,9 @@ def test_clause_drafting_prompt_uses_practical_contract_format() -> None:
     assert "Готові формулювання пунктів" in user_prompt
     assert "| Проблема в договорі | Ризик для клієнта | Як запропонований пункт це вирішує |" in user_prompt
     assert "Не використовуй технічні посилання 'фрагмент 1'" in user_prompt
+    assert "якщо є, запропонуй редакцію існуючого пункту" in user_prompt
+    assert "Не дублюй однакові положення" in user_prompt
+    assert "Нумерацію пропонуй тільки з урахуванням змісту відповідного розділу" in user_prompt
+    assert "не формулюй категоричні обов'язки" in user_prompt.lower()
     assert "Підготуй відповідь у структурі" not in user_prompt
 

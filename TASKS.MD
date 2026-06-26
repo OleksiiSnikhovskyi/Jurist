@@ -123,6 +123,10 @@
 - [ ] Store generated answers in `legal_opinions`.
 - [ ] Add lawyer review/approval state for generated opinions.
 - [ ] Add official-source verification workflow for legislation and court practice.
+- [ ] Add controlled official-source web search stage for gaps and freshness checks only.
+  - Restrict search to official domains such as `zakon.rada.gov.ua`, `court.gov.ua`, `supreme.court.gov.ua`, `kmu.gov.ua`, ministries, NERC, DBN/DSTU sources.
+  - Trigger it only when RAG confidence is low, the answer needs current validity, or exact legal/court references must be verified.
+  - Exclude news sites, private legal blogs, forums, and unofficial commentary.
 - [ ] Add export of final answers to DOCX/PDF.
 
 ## Stage 10: Production Hardening
@@ -133,3 +137,4 @@
 - [ ] Add backup/restore instructions for `jur_db`.
 - [ ] Add CI workflow for tests and migration checks.
 - [x] Replace deterministic embeddings configuration with a production Ollama embedding provider.
+
