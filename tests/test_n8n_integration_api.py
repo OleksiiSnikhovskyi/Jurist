@@ -161,7 +161,10 @@ def test_telegram_intake_creates_pending_package(
                     "type": "document",
                     "file_id": "telegram-file-1",
                     "file_name": "contract.docx",
-                    "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "mime_type": (
+                        "application/vnd.openxmlformats-officedocument."
+                        "wordprocessingml.document"
+                    ),
                 }
             ],
             "has_attachments": True,
@@ -677,6 +680,12 @@ class FakeVectorSearchService:
         ]
 
 
+class IncompleteLegalAnalysisService(FakeLegalAnalysisService):
+    def analyze_package(self, command: LegalPackageAnalysisCommand) -> LegalPackageAnalysisResult:
+        self.command = command
+        return LegalPackageAnalysisResult(answer="1", model="fake-qwen")
+
+
 def test_package_source_filter_removes_public_sector_fragments_for_private_contract(
     db_session: Session,
 ) -> None:
@@ -743,6 +752,101 @@ def test_llm_answer_sanitizer_removes_procurement_when_private_contract(
     assert "приватних сторін" in answer
     assert "строки приймання" in answer
 
+
+def test_telegram_continuation_note_waits_for_next_attachment(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session)
+    fake_llm = FakeLegalAnalysisService()
+
+    original_init = N8nIntegrationService.__init__
+
+    def init_with_fake_llm(self: N8nIntegrationService, *args, **kwargs) -> None:
+        kwargs["legal_analysis_service"] = fake_llm
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(N8nIntegrationService, "__init__", init_with_fake_llm)
+
+    note_payload = _post_telegram_text(
+        client,
+        "та надати зауваження і пропозиції щодо виправлень",
+    )
+
+    assert note_payload["status"] == "pending"
+    assert "Уточнення додано" in note_payload["reply_text"]
+    assert fake_llm.command is None
+
+    attachment_response = client.post(
+        "/n8n/intake/telegram",
+        json={
+            "chat_id": "100",
+            "telegram_user_id": "200",
+            "text": "Потрібно проаналізувати договір",
+            "action": "add_material",
+            "attachments": [
+                {
+                    "type": "document",
+                    "file_id": "telegram-file-2",
+                    "file_name": "contract.docx",
+                    "mime_type": (
+                        "application/vnd.openxmlformats-officedocument."
+                        "wordprocessingml.document"
+                    ),
+                }
+            ],
+            "has_attachments": True,
+        },
+    )
+
+    assert attachment_response.status_code == 200
+    attachment_payload = attachment_response.json()
+    assert attachment_payload["status"] == "waiting_for_text_extraction"
+    assert attachment_payload["item_count"] == 2
+    assert db_session.query(N8nIntakePackage).count() == 1
+
+
+def test_incomplete_llm_answer_is_not_marked_processed(db_session: Session) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    package = N8nIntakePackage(
+        id="package-incomplete-llm",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        status="queued",
+        question="Проаналізуй договір",
+    )
+    db_session.add(package)
+    db_session.add(
+        N8nIntakeItem(
+            package_id="package-incomplete-llm",
+            item_type="document",
+            text="Договір про надання послуг між двома комерційними компаніями.",
+        )
+    )
+    db_session.commit()
+
+    response = N8nIntegrationService(
+        db_session,
+        legal_analysis_service=IncompleteLegalAnalysisService(),
+    ).start_package_processing(
+        request=N8nProcessPackageRequest(
+            package_id="package-incomplete-llm",
+            requested_agent="contract_review",
+            question="Проаналізуй договір",
+        )
+    )
+
+    assert response.status == "llm_error"
+    assert response.answer is None
+    assert "неповну відповідь" in response.message
+    db_session.refresh(package)
+    assert package.metadata_json["llm_answer_raw"] == "1"
 
 def test_contract_followup_routes_search_to_document_facts_and_filters_sources(
     db_session: Session,

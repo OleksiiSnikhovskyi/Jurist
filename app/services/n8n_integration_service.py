@@ -93,9 +93,21 @@ CONTRACT_KEYWORDS = (
     "продавець",
 )
 
+MAX_LLM_PACKAGE_TEXT_CHARS = 14000
+
 CONTRACT_SEARCH_HINT = (
     "договір приватне право господарські зобов'язання істотні умови виконання "
     "оплата строки відповідальність приймання розірвання"
+)
+
+CONTINUATION_NOTE_PREFIXES = (
+    "та ",
+    "і ",
+    "й ",
+    "а також",
+    "також",
+    "додатково",
+    "плюс",
 )
 
 FOLLOWUP_REFERENCE_KEYWORDS = (
@@ -195,6 +207,8 @@ class N8nIntegrationService:
             reply_menu = "batch"
         else:
             added_count = self._append_event_items(package, event)
+            if added_count:
+                self.db.flush()
             if batch_mode:
                 reply_text = (
                     f"Додано матеріалів: {added_count}. Натисніть 'Почати обробку', коли пакет буде повним."
@@ -214,16 +228,26 @@ class N8nIntegrationService:
                     "система автоматично запустить аналіз з активним профілем клієнта."
                 )
             elif added_count:
-                package.status = "queued"
-                package.requested_agent = event.requested_agent or "orchestrator"
-                package.question = event.question or event.text
-                self._attach_active_client_profile(package, event)
-                self._attach_recent_processed_context(package, event)
-                reply_text = self._try_process_package_with_llm(
-                    package=package,
-                    workspace_id=event.workspace_id,
-                    user_id=event.user_id,
-                )
+                if self._is_likely_continuation_note(event.text or ""):
+                    package.status = "pending"
+                    package.requested_agent = event.requested_agent or "orchestrator"
+                    package.question = event.question or event.text
+                    self._attach_active_client_profile(package, event)
+                    reply_text = (
+                        "Уточнення додано до майбутнього пакета. Надішліть документ або "
+                        "натисніть 'Почати обробку', якщо матеріалів більше не буде."
+                    )
+                else:
+                    package.status = "queued"
+                    package.requested_agent = event.requested_agent or "orchestrator"
+                    package.question = event.question or event.text
+                    self._attach_active_client_profile(package, event)
+                    self._attach_recent_processed_context(package, event)
+                    reply_text = self._try_process_package_with_llm(
+                        package=package,
+                        workspace_id=event.workspace_id,
+                        user_id=event.user_id,
+                    )
             else:
                 reply_text = "Команду отримано. Для комплекту документів відкрийте 'Пакетна обробка'."
 
@@ -496,6 +520,13 @@ class N8nIntegrationService:
             llm_started_at = perf_counter()
             result = self.legal_analysis_service.analyze_package(command)
             timings["ollama_seconds"] = round(perf_counter() - llm_started_at, 3)
+            if self._is_incomplete_llm_answer(result.answer):
+                retry_command = self._retry_command_for_incomplete_answer(command)
+                retry_started_at = perf_counter()
+                retry_result = self.legal_analysis_service.analyze_package(retry_command)
+                timings["ollama_retry_seconds"] = round(perf_counter() - retry_started_at, 3)
+                timings["ollama_retry_used"] = 1
+                result = retry_result
         except OllamaRequestError as exc:
             package.status = "llm_error"
             metadata = dict(package.metadata_json or {})
@@ -503,6 +534,19 @@ class N8nIntegrationService:
             metadata["processing_timings"] = timings
             package.metadata_json = metadata
             return f"Пакет прийнято, але Ollama не змогла сформувати відповідь: {exc}"
+
+        if self._is_incomplete_llm_answer(result.answer):
+            package.status = "llm_error"
+            metadata = dict(package.metadata_json or {})
+            metadata["llm_error"] = "LLM returned an incomplete answer."
+            metadata["llm_answer_raw"] = result.answer
+            metadata["llm_model"] = result.model
+            metadata["processing_timings"] = timings
+            package.metadata_json = metadata
+            return (
+                "Документ розпізнано, але модель повернула неповну відповідь. "
+                "Натисніть 'Почати обробку' ще раз або уточніть запит."
+            )
 
         answer = self._sanitize_answer_for_package(
             answer=result.answer,
@@ -521,6 +565,44 @@ class N8nIntegrationService:
         }
         package.metadata_json = metadata
         return answer
+
+    def _retry_command_for_incomplete_answer(
+        self,
+        command: LegalPackageAnalysisCommand,
+    ) -> LegalPackageAnalysisCommand:
+        return LegalPackageAnalysisCommand(
+            question=(
+                f"{command.question}\n\n"
+                "Попередня відповідь була неповною або обрізаною. "
+                "Сформуй повну структуровану відповідь з усіма 6 розділами, "
+                "завершеними реченнями і практичними рекомендаціями."
+            ),
+            package_text=command.package_text,
+            lawyer_system_prompt=command.lawyer_system_prompt,
+            client_context=command.client_context,
+            source_fragments=command.source_fragments,
+            attachment_notes=command.attachment_notes,
+        )
+
+    def _is_likely_continuation_note(self, text: str) -> bool:
+        clean_text = text.strip().lower()
+        if not clean_text:
+            return False
+        return any(clean_text.startswith(prefix) for prefix in CONTINUATION_NOTE_PREFIXES)
+
+    def _is_incomplete_llm_answer(self, answer: str) -> bool:
+        clean_answer = answer.strip()
+        if not clean_answer:
+            return True
+        if re.fullmatch(r"\d{1,2}[.)]?", clean_answer):
+            return True
+        answer_lower = clean_answer.lower()
+        expected_final_markers = ("6.", "наступні дії", "наступні кроки")
+        if "1." in answer_lower and not any(
+            marker in answer_lower for marker in expected_final_markers
+        ):
+            return True
+        return False
 
     def _classify_query_route(
         self,
@@ -676,16 +758,35 @@ class N8nIntegrationService:
             )
             timings["filtered_source_fragment_count"] = len(source_fragments)
 
+        llm_package_text = self._fit_package_text_for_llm(package_text)
+        timings["llm_package_text_chars"] = len(llm_package_text)
+
         return (
             LegalPackageAnalysisCommand(
                 question=question,
-                package_text=package_text,
+                package_text=llm_package_text,
                 lawyer_system_prompt=lawyer_system_prompt,
                 client_context=client_context,
                 source_fragments=source_fragments,
                 attachment_notes=attachment_notes,
             ),
             timings,
+        )
+
+    def _fit_package_text_for_llm(self, package_text: str) -> str:
+        if len(package_text) <= MAX_LLM_PACKAGE_TEXT_CHARS:
+            return package_text
+        head_chars = 9500
+        tail_chars = MAX_LLM_PACKAGE_TEXT_CHARS - head_chars - 300
+        return "\n".join(
+            [
+                package_text[:head_chars].rstrip(),
+                (
+                    "[...частину довгого документа пропущено для стабільної LLM-обробки; "
+                    "аналіз має враховувати надані факти та RAG-фрагменти...]"
+                ),
+                package_text[-tail_chars:].lstrip(),
+            ]
         )
 
     def _filter_source_fragments_for_package(
