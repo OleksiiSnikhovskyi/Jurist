@@ -686,6 +686,33 @@ class IncompleteLegalAnalysisService(FakeLegalAnalysisService):
         return LegalPackageAnalysisResult(answer="1", model="fake-qwen")
 
 
+class ClauseDraftingLegalAnalysisService(FakeLegalAnalysisService):
+    def analyze_package(self, command: LegalPackageAnalysisCommand) -> LegalPackageAnalysisResult:
+        self.command = command
+        return LegalPackageAnalysisResult(
+            answer=(
+                "1. Короткий висновок\n"
+                "Рекомендую додати порядок приймання та відповідальність.\n\n"
+                "2. Як вставити в існуючу нумерацію\n"
+                "| Куди вставити | Новий пункт | Мета |\n"
+                "|---|---:|---|\n"
+                "| після п. 2.3 | 2.4 | уточнити результат робіт |\n\n"
+                "3. Готові формулювання пунктів\n"
+                "**Пункт 2.4. Результат робіт**\n"
+                "\"Виконавець зобов'язаний передати Замовнику результат робіт.\"\n\n"
+                "4. Таблиця ризиків\n"
+                "| Проблема в договорі | Ризик для клієнта | Як запропонований пункт це вирішує |\n"
+                "|---|---|---|\n"
+                "| немає приймання | спір щодо якості | встановлює процедуру |\n\n"
+                "5. Що додатково перевірити\n"
+                "- Предмет договору.\n\n"
+                "6. Примітка щодо джерел\n"
+                "Джерела використовуються як допоміжний контекст."
+            ),
+            model="fake-qwen",
+        )
+
+
 def test_package_source_filter_removes_public_sector_fragments_for_private_contract(
     db_session: Session,
 ) -> None:
@@ -752,6 +779,49 @@ def test_llm_answer_sanitizer_removes_procurement_when_private_contract(
     assert "приватних сторін" in answer
     assert "строки приймання" in answer
 
+
+def test_contract_clause_drafting_sanitizer_removes_empty_items_fragments_and_repeats(
+    db_session: Session,
+) -> None:
+    service = N8nIntegrationService(db_session)
+
+    answer = service._sanitize_answer_for_package(
+        package_text="ПрАТ уклало договір з ТОВ про надання послуг.",
+        answer=(
+            "1. Короткий висновок\n"
+            "2.\n"
+            "- Уточнити порядок приймання робіт.\n"
+            "- Уточнити порядок приймання робіт.\n"
+            "Правова підстава: фрагмент 1.\n"
+            "**Пункт 4.3. Приймання робіт**\n"
+            "\"Замовник має право перевірити результат робіт.\""
+        ),
+    )
+
+    assert "\n2.\n" not in f"\n{answer}\n"
+    assert answer.count("Уточнити порядок приймання робіт") == 1
+    assert "фрагмент 1" not in answer.lower()
+    assert "релевантне джерело" in answer
+
+
+def test_contract_clause_drafting_incomplete_check_requires_ready_clauses(
+    db_session: Session,
+) -> None:
+    service = N8nIntegrationService(db_session)
+
+    assert service._is_incomplete_llm_answer(
+        "1. Короткий висновок\nЗагальні рекомендації.",
+        "contract_clause_drafting",
+    )
+    assert not service._is_incomplete_llm_answer(
+        "2. Як вставити в існуючу нумерацію\n"
+        "| Куди вставити | Новий пункт | Мета |\n"
+        "3. Готові формулювання пунктів\n"
+        "**Пункт 2.4. Результат робіт**\n"
+        "4. Таблиця ризиків\n"
+        "| Проблема в договорі | Ризик для клієнта | Як запропонований пункт це вирішує |",
+        "contract_clause_drafting",
+    )
 
 def test_telegram_continuation_note_waits_for_next_attachment(
     client: TestClient,
@@ -912,6 +982,56 @@ def test_contract_followup_routes_search_to_document_facts_and_filters_sources(
     assert (
         package.metadata_json["processing_timings"]["query_route"]
         == "contract_document_followup"
+    )
+
+def test_contract_clause_drafting_mode_activates_for_numbered_clause_request(
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    package = N8nIntakePackage(
+        id="package-clause-drafting",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        status="queued",
+        question="Які би ти додав пункти до договору з дотриманням існуючої нумерації?",
+    )
+    db_session.add(package)
+    db_session.add(
+        N8nIntakeItem(
+            package_id="package-clause-drafting",
+            item_type="document",
+            text=(
+                "Договір між ПрАТ Л-КАПІТАЛ як Замовником та ТОВ Виконавець "
+                "про надання консультаційних послуг."
+            ),
+        )
+    )
+    db_session.commit()
+    fake_llm = ClauseDraftingLegalAnalysisService()
+
+    response = N8nIntegrationService(
+        db_session,
+        legal_analysis_service=fake_llm,
+        vector_search_service=FakeVectorSearchService(),
+    ).start_package_processing(
+        request=N8nProcessPackageRequest(
+            package_id="package-clause-drafting",
+            requested_agent="contract_review",
+            question="Які би ти додав пункти до договору з дотриманням існуючої нумерації?",
+        )
+    )
+
+    assert response.status == "processed"
+    assert fake_llm.command is not None
+    assert fake_llm.command.response_mode == "contract_clause_drafting"
+    assert "| Куди вставити | Новий пункт | Мета |" in response.answer
+    db_session.refresh(package)
+    assert (
+        package.metadata_json["processing_timings"]["response_mode"]
+        == "contract_clause_drafting"
     )
 
 def test_telegram_batch_menu_keeps_materials_pending(
@@ -1390,3 +1510,6 @@ def test_obsidian_sync_note_creates_document_and_chunks(
     assert document.document_type == "obsidian_markdown"
     assert document.file_path == "obsidian://cases/case-1.md"
     assert db_session.query(DocumentChunk).filter_by(document_id=document.id).count() == 1
+
+
+

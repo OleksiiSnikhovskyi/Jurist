@@ -125,6 +125,22 @@ FOLLOWUP_REFERENCE_KEYWORDS = (
     "удосконален",
 )
 
+CLAUSE_DRAFTING_KEYWORDS = (
+    "додати пункт",
+    "додай пункт",
+    "які пункти",
+    "які би ти додав",
+    "які б ти додав",
+    "з дотриманням нумерації",
+    "існуючої нумерації",
+    "запропонуй редакцію",
+    "запропонувати редакцію",
+    "готові формулювання",
+    "редакцію пункт",
+    "виправлення",
+    "зауваження",
+)
+
 
 @dataclass(frozen=True)
 class PackageItemCounts:
@@ -520,7 +536,7 @@ class N8nIntegrationService:
             llm_started_at = perf_counter()
             result = self.legal_analysis_service.analyze_package(command)
             timings["ollama_seconds"] = round(perf_counter() - llm_started_at, 3)
-            if self._is_incomplete_llm_answer(result.answer):
+            if self._is_incomplete_llm_answer(result.answer, command.response_mode):
                 retry_command = self._retry_command_for_incomplete_answer(command)
                 retry_started_at = perf_counter()
                 retry_result = self.legal_analysis_service.analyze_package(retry_command)
@@ -535,7 +551,7 @@ class N8nIntegrationService:
             package.metadata_json = metadata
             return f"Пакет прийнято, але Ollama не змогла сформувати відповідь: {exc}"
 
-        if self._is_incomplete_llm_answer(result.answer):
+        if self._is_incomplete_llm_answer(result.answer, command.response_mode):
             package.status = "llm_error"
             metadata = dict(package.metadata_json or {})
             metadata["llm_error"] = "LLM returned an incomplete answer."
@@ -570,18 +586,27 @@ class N8nIntegrationService:
         self,
         command: LegalPackageAnalysisCommand,
     ) -> LegalPackageAnalysisCommand:
-        return LegalPackageAnalysisCommand(
-            question=(
-                f"{command.question}\n\n"
+        if command.response_mode == "contract_clause_drafting":
+            retry_instruction = (
+                "Попередня відповідь була неповною або не містила готових пунктів договору. "
+                "Сформуй повну відповідь саме у форматі додавання пунктів: таблиця 'Куди вставити / "
+                "Новий пункт / Мета', розділ 'Готові формулювання пунктів', таблиця ризиків. "
+                "Не використовуй 'фрагмент 1', 'фрагмент 2', не залишай порожні numbered items і не повторюй рекомендації."
+            )
+        else:
+            retry_instruction = (
                 "Попередня відповідь була неповною або обрізаною. "
                 "Сформуй повну структуровану відповідь з усіма 6 розділами, "
                 "завершеними реченнями і практичними рекомендаціями."
-            ),
+            )
+        return LegalPackageAnalysisCommand(
+            question=f"{command.question}\n\n{retry_instruction}",
             package_text=command.package_text,
             lawyer_system_prompt=command.lawyer_system_prompt,
             client_context=command.client_context,
             source_fragments=command.source_fragments,
             attachment_notes=command.attachment_notes,
+            response_mode=command.response_mode,
         )
 
     def _is_likely_continuation_note(self, text: str) -> bool:
@@ -590,19 +615,48 @@ class N8nIntegrationService:
             return False
         return any(clean_text.startswith(prefix) for prefix in CONTINUATION_NOTE_PREFIXES)
 
-    def _is_incomplete_llm_answer(self, answer: str) -> bool:
+    def _is_incomplete_llm_answer(
+        self,
+        answer: str,
+        response_mode: str = "legal_analysis",
+    ) -> bool:
         clean_answer = answer.strip()
         if not clean_answer:
             return True
         if re.fullmatch(r"\d{1,2}[.)]?", clean_answer):
             return True
         answer_lower = clean_answer.lower()
+        if response_mode == "contract_clause_drafting":
+            required_markers = (
+                "куди вставити",
+                "новий пункт",
+                "готові формулювання",
+                "таблиця ризиків",
+            )
+            return not all(marker in answer_lower for marker in required_markers)
+
         expected_final_markers = ("6.", "наступні дії", "наступні кроки")
         if "1." in answer_lower and not any(
             marker in answer_lower for marker in expected_final_markers
         ):
             return True
         return False
+
+    def _classify_response_mode(
+        self,
+        *,
+        question: str,
+        package_text: str,
+        query_route: str,
+    ) -> str:
+        combined = f"{question}\n{package_text}".lower()
+        has_clause_marker = any(keyword in combined for keyword in CLAUSE_DRAFTING_KEYWORDS)
+        has_contract_context = query_route.startswith("contract_document") or any(
+            keyword in combined for keyword in CONTRACT_KEYWORDS
+        )
+        if has_clause_marker and has_contract_context:
+            return "contract_clause_drafting"
+        return "legal_analysis"
 
     def _classify_query_route(
         self,
@@ -724,6 +778,12 @@ class N8nIntegrationService:
             source_items_count=len(source_items),
         )
         timings["query_route"] = query_route
+        response_mode = self._classify_response_mode(
+            question=question,
+            package_text=package_text,
+            query_route=query_route,
+        )
+        timings["response_mode"] = response_mode
         query_text = self._build_legal_search_query(
             route=query_route,
             question=question,
@@ -769,6 +829,7 @@ class N8nIntegrationService:
                 client_context=client_context,
                 source_fragments=source_fragments,
                 attachment_notes=attachment_notes,
+                response_mode=response_mode,
             ),
             timings,
         )
@@ -842,34 +903,72 @@ class N8nIntegrationService:
         return any(term in fragment_lower for term in contract_terms)
 
     def _sanitize_answer_for_package(self, *, answer: str, package_text: str) -> str:
-        if self._has_public_sector_context(package_text.lower()):
-            return answer
+        sanitized = answer
+        if not self._has_public_sector_context(package_text.lower()):
+            forbidden_keywords = (
+                "публічн",
+                "закупів",
+                "prozorro",
+                "прозорро",
+                "державний замовник",
+                "державного замовника",
+                "державне майно",
+                "державної власності",
+            )
+            clean_lines: list[str] = []
+            for line in sanitized.splitlines():
+                if not any(keyword in line.lower() for keyword in forbidden_keywords):
+                    clean_lines.append(line)
+                    continue
 
-        forbidden_keywords = (
-            "публічн",
-            "закупів",
-            "prozorro",
-            "прозорро",
-            "державний замовник",
-            "державного замовника",
-            "державне майно",
-            "державної власності",
+                sentences = re.split(r"(?<=[.!?])\s+", line)
+                kept = [
+                    sentence
+                    for sentence in sentences
+                    if sentence
+                    and not any(keyword in sentence.lower() for keyword in forbidden_keywords)
+                ]
+                if kept:
+                    clean_lines.append(" ".join(kept))
+            sanitized = "\n".join(clean_lines)
+
+        sanitized = self._remove_technical_fragment_labels(sanitized)
+        sanitized = self._remove_empty_numbered_items(sanitized)
+        sanitized = self._deduplicate_repeated_recommendations(sanitized)
+        return sanitized.strip()
+
+    def _remove_technical_fragment_labels(self, answer: str) -> str:
+        sanitized = re.sub(
+            r"\s*\((?:відповідно до\s+)?фрагмент(?:у|а)?\s*\d+\)",
+            "",
+            answer,
+            flags=re.IGNORECASE,
         )
+        sanitized = re.sub(
+            r"\b(?:відповідно до\s+)?фрагмент(?:у|а)?\s*\d+\b",
+            "релевантне джерело",
+            sanitized,
+            flags=re.IGNORECASE,
+        )
+        return sanitized
+
+    def _remove_empty_numbered_items(self, answer: str) -> str:
+        lines = [line for line in answer.splitlines() if not re.fullmatch(r"\s*\d+[.)]\s*", line)]
+        return "\n".join(lines)
+
+    def _deduplicate_repeated_recommendations(self, answer: str) -> str:
+        seen: set[str] = set()
         clean_lines: list[str] = []
         for line in answer.splitlines():
-            if not any(keyword in line.lower() for keyword in forbidden_keywords):
-                clean_lines.append(line)
+            stripped = line.strip()
+            normalized = re.sub(r"\s+", " ", stripped.lower())
+            is_repeatable = bool(re.match(r"^([-*]|\d+[.)])\s+", stripped))
+            if is_repeatable and normalized in seen:
                 continue
-
-            sentences = re.split(r"(?<=[.!?])\s+", line)
-            kept = [
-                sentence
-                for sentence in sentences
-                if sentence and not any(keyword in sentence.lower() for keyword in forbidden_keywords)
-            ]
-            if kept:
-                clean_lines.append(" ".join(kept))
-        return "\n".join(clean_lines).strip()
+            if is_repeatable:
+                seen.add(normalized)
+            clean_lines.append(line)
+        return "\n".join(clean_lines)
 
     def _has_public_sector_context(self, text_lower: str) -> bool:
         return any(keyword in text_lower for keyword in PUBLIC_SECTOR_KEYWORDS)
@@ -1911,3 +2010,5 @@ class N8nIntegrationService:
             attachments=attachments,
             text_messages=text_messages,
         )
+
+

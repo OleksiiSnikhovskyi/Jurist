@@ -30,6 +30,7 @@ class LegalPackageAnalysisCommand:
     client_context: str | None = None
     source_fragments: list[SourceFragment] = field(default_factory=list)
     attachment_notes: list[str] = field(default_factory=list)
+    response_mode: str = "legal_analysis"
 
 
 @dataclass(frozen=True)
@@ -111,26 +112,42 @@ def build_system_prompt(lawyer_system_prompt: str) -> str:
 
 
 def build_user_prompt(command: LegalPackageAnalysisCommand) -> str:
-    source_lines = [
+    if command.response_mode == "contract_clause_drafting":
+        return build_contract_clause_drafting_prompt(command)
+    return build_legal_analysis_prompt(command)
+
+
+def _source_lines(command: LegalPackageAnalysisCommand) -> list[str]:
+    return [
         (
             f"[{index}] document_id={fragment.document_id}, "
             f"chunk={fragment.chunk_index}, score={fragment.score:.3f}\n{fragment.text}"
         )
         for index, fragment in enumerate(command.source_fragments, start=1)
     ]
+
+
+def _common_prompt_sections(command: LegalPackageAnalysisCommand) -> list[str]:
+    source_lines = _source_lines(command)
     attachment_lines = command.attachment_notes or ["- Немає вкладень без витягнутого тексту."]
+    return [
+        f"Запит юриста:\n{command.question.strip()}",
+        (
+            f"Контекст клієнта:\n{command.client_context.strip()}"
+            if command.client_context
+            else "Контекст клієнта: не обрано."
+        ),
+        f"Матеріали пакета:\n{command.package_text.strip()}",
+        "Вкладення без текстового витягу:\n" + "\n".join(attachment_lines),
+        "Релевантні фрагменти бази знань:\n"
+        + ("\n\n".join(source_lines) if source_lines else "- Релевантні фрагменти не знайдено."),
+    ]
+
+
+def build_legal_analysis_prompt(command: LegalPackageAnalysisCommand) -> str:
     return "\n\n".join(
-        [
-            f"Запит юриста:\n{command.question.strip()}",
-            (
-                f"Контекст клієнта:\n{command.client_context.strip()}"
-                if command.client_context
-                else "Контекст клієнта: не обрано."
-            ),
-            f"Матеріали пакета:\n{command.package_text.strip()}",
-            "Вкладення без текстового витягу:\n" + "\n".join(attachment_lines),
-            "Релевантні фрагменти бази знань:\n"
-            + ("\n\n".join(source_lines) if source_lines else "- Релевантні фрагменти не знайдено."),
+        _common_prompt_sections(command)
+        + [
             (
                 "Підготуй відповідь у структурі:\n"
                 "1. Короткий висновок.\n"
@@ -144,6 +161,51 @@ def build_user_prompt(command: LegalPackageAnalysisCommand) -> str:
                 "не аналізуй і не згадуй державні закупівлі або державне майно. "
                 "Якщо релевантні фрагменти бази знань не знайдено, не наводь точні номери статей або реквізити з пам'яті; "
                 "сформулюй правову оцінку загально і вкажи, які норми потрібно перевірити."
+            ),
+        ]
+    )
+
+
+def build_contract_clause_drafting_prompt(command: LegalPackageAnalysisCommand) -> str:
+    return "\n\n".join(
+        _common_prompt_sections(command)
+        + [
+            (
+                "Підготуй практичну відповідь у режимі contract clause drafting / redline recommendations. "
+                "Головна задача: дати юристу готові пункти договору, які можна вставити в документ з дотриманням "
+                "існуючої нумерації.\n\n"
+                "Формат відповіді:\n"
+                "1. Короткий висновок\n"
+                "Коротко перелічити, які блоки рекомендовано додати або уточнити.\n\n"
+                "2. Як вставити в існуючу нумерацію\n"
+                "Обов'язково дай markdown-таблицю з точними заголовками:\n"
+                "| Куди вставити | Новий пункт | Мета |\n"
+                "|---|---:|---|\n"
+                "Якщо точна нумерація не очевидна з тексту, напиши: "
+                "'Пропоную вставити після розділу/пункту X; якщо у вашій редакції інша нумерація, "
+                "перенумеруйте відповідно'.\n\n"
+                "3. Готові формулювання пунктів\n"
+                "Дай готові редакції пунктів у форматі:\n"
+                "**Пункт X.Y. Назва пункту**\n"
+                "\"Текст пункту договору...\"\n\n"
+                "4. Таблиця ризиків\n"
+                "Обов'язково дай markdown-таблицю з точними заголовками:\n"
+                "| Проблема в договорі | Ризик для клієнта | Як запропонований пункт це вирішує |\n"
+                "|---|---|---|\n\n"
+                "5. Що додатково перевірити\n"
+                "Стислий список перевірок тільки за темами, які випливають з договору.\n\n"
+                "6. Примітка щодо джерел\n"
+                "Напиши, що джерела використовуються як допоміжний контекст і потребують перевірки за офіційним джерелом, "
+                "якщо точні реквізити не наведені в матеріалах.\n\n"
+                "Обмеження:\n"
+                "- Не використовуй стандартний формат правового висновку з розділами 'Правова оцінка' та 'Наступні дії'.\n"
+                "- Не давай загальні поради без готових формулювань пунктів.\n"
+                "- Не використовуй технічні посилання 'фрагмент 1', 'фрагмент 2' у фінальній відповіді; "
+                "називай документ людською мовою або пиши 'потребує перевірки за офіційним джерелом'.\n"
+                "- Не залишай порожні numbered items на кшталт '2.'.\n"
+                "- Не повторюй одну й ту саму рекомендацію більше одного разу.\n"
+                "- Не припускай державні закупівлі, державне майно, фінансовий лізинг або спеціальний статус сторони, "
+                "якщо це прямо не випливає з тексту договору чи профілю клієнта."
             ),
         ]
     )

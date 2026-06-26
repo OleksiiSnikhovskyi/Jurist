@@ -56,3 +56,22 @@ def test_ollama_payload_disables_qwen_thinking_for_telegram_answers() -> None:
     assert service.payload["think"] is False
     assert service.payload["options"]["num_ctx"] == 16384
     assert service.payload["options"]["num_predict"] == 3072
+
+
+def test_clause_drafting_prompt_uses_practical_contract_format() -> None:
+    user_prompt = build_user_prompt(
+        LegalPackageAnalysisCommand(
+            question="Які би ти додав пункти до договору з дотриманням існуючої нумерації?",
+            package_text="Договір між Замовником і Виконавцем про надання консультаційних послуг.",
+            lawyer_system_prompt="Працюй як договірний юрист.",
+            response_mode="contract_clause_drafting",
+        )
+    )
+
+    assert "contract clause drafting" in user_prompt
+    assert "| Куди вставити | Новий пункт | Мета |" in user_prompt
+    assert "Готові формулювання пунктів" in user_prompt
+    assert "| Проблема в договорі | Ризик для клієнта | Як запропонований пункт це вирішує |" in user_prompt
+    assert "Не використовуй технічні посилання 'фрагмент 1'" in user_prompt
+    assert "Підготуй відповідь у структурі" not in user_prompt
+
