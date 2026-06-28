@@ -75,8 +75,8 @@
 - [x] Add OCR pipeline for photos and scanned documents.
 - [x] Add voice transcription pipeline for Telegram voice messages.
 - [x] Add source freshness metadata for laws, court practice, and regulatory materials.
-- [ ] Fill the production `priority_manifest.csv` from official source exports and ingest the legal corpus. Rada catalog backfill is running in validated 25-page batches from official current documents.
-- [x] Schedule daily Rada arrivals sync and ingest delta updates.
+- [x] Fill the production `priority_manifest.csv` from official source exports and ingest the legal corpus. Rada catalog backfill completed control-safe with `missing_files: 0`; 18 catalog pages are preserved in `legal_sources/rada_catalog_failures.log` for retry from another IP/VPN.
+- [x] Schedule daily Rada arrivals sync and ingest delta updates. Daily sync now preserves Rada validity statuses (`current`, `pending_effective`, `obsolete`, `needs_verification`).
 
 ## Stage 7A: Search Performance Foundation
 
@@ -94,8 +94,8 @@
 
 ## Stage 7B: Knowledge Corpus Completion
 
-- [ ] Continue Rada backfill until the official catalog is fully processed.
-- [ ] Keep only valid/current official documents in the production manifest.
+- [x] Continue Rada backfill until the official catalog is fully processed. Audit note: retry offsets 1844-1861 from `rada_catalog_failures.log` via VPN/Miledy IP when available.
+- [x] Keep only valid/current official documents in the production manifest; obsolete/invalid sources are excluded from production RAG search and retained only as auditable source records.
 - [x] Rebuild and validate `priority_manifest.csv` after corpus completion batches; current production manifest has no missing files.
 - [x] Re-ingest or refresh legal corpus chunks after embedding migration when needed; current `document_chunks.embedding` null count is 0.
 

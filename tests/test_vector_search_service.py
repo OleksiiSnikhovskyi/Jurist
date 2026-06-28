@@ -193,3 +193,46 @@ def test_extract_legal_reference_terms_finds_dbn_and_law_numbers() -> None:
 
 def test_extract_known_alias_terms_finds_legal_short_names() -> None:
     assert extract_known_alias_terms("Перевір ЦКУ та КЗпП для договору.") == ["ЦКУ", "КЗПП"]
+
+
+class FakePostgresMappings:
+    def mappings(self):
+        return []
+
+
+class FakePostgresBind:
+    class Dialect:
+        name = "postgresql"
+
+    dialect = Dialect()
+
+
+class FakePostgresSession:
+    bind = FakePostgresBind()
+
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    def execute(self, statement, params=None):
+        self.statements.append(str(statement))
+        return FakePostgresMappings()
+
+
+def test_postgresql_vector_search_excludes_obsolete_legal_sources() -> None:
+    fake_db = FakePostgresSession()
+    service = VectorSearchService(fake_db, embedding_provider=KeywordEmbeddingProvider())
+
+    service._search_postgresql(
+        VectorSearchCommand(
+            workspace_id="workspace-1",
+            user_id="user-1",
+            query="contract",
+            document_ids=["document-1"],
+        ),
+        [1.0, 0.0, 0.0],
+    )
+
+    sql = "\n".join(fake_db.statements)
+    assert "legal_sources ls" in sql
+    assert "NOT EXISTS" in sql
+    assert "IN ('invalid', 'obsolete')" in sql

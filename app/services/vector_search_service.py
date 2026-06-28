@@ -134,9 +134,20 @@ class VectorSearchService:
                     dc.chunk_text AS chunk_text,
                     1 - (dc.embedding <=> CAST(:query_embedding AS vector)) AS score
                 FROM document_chunks dc
+                JOIN documents d ON d.id = dc.document_id
                 WHERE dc.workspace_id = :workspace_id
                   AND dc.embedding IS NOT NULL
                   AND length(trim(dc.chunk_text)) > 0
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM legal_sources ls
+                    WHERE COALESCE(ls.validity_status, 'needs_verification') IN ('invalid', 'obsolete')
+                      AND (
+                        (ls.source_url IS NOT NULL AND d.file_path ILIKE '%' || ls.source_url || '%')
+                        OR (ls.document_number IS NOT NULL AND d.document_name ILIKE '%' || ls.document_number || '%')
+                        OR d.document_name = ls.source_name
+                      )
+                  )
                   {document_filter}
                 ORDER BY dc.embedding <=> CAST(:query_embedding AS vector)
                 LIMIT :limit
@@ -175,7 +186,7 @@ class VectorSearchService:
                 matched_sources AS (
                     SELECT source_url, source_name, document_number
                     FROM legal_sources
-                    WHERE validity_status IS DISTINCT FROM 'invalid'
+                    WHERE COALESCE(validity_status, 'needs_verification') NOT IN ('invalid', 'obsolete')
                       AND (
                         document_number = ANY(CAST(:terms AS text[]))
                         OR source_name = ANY(CAST(:terms AS text[]))
