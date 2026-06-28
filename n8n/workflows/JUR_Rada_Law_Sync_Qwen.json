@@ -34,13 +34,17 @@
     },
     {
       "parameters": {
-        "url": "https://zakon.rada.gov.ua/laws/main/nn",
+        "url": "={{$env.JUR_RADA_FETCH_RELAY_URL ? $env.JUR_RADA_FETCH_RELAY_URL + '?url=' + encodeURIComponent('https://zakon.rada.gov.ua/laws/main/nn') : 'https://zakon.rada.gov.ua/laws/main/nn'}}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "User-Agent",
               "value": "JuristBot/0.1 (+https://github.com/OleksiiSnikhovskyi/Jurist)"
+            },
+            {
+              "name": "X-JUR-RADA-FETCH-TOKEN",
+              "value": "={{$env.JUR_RADA_FETCH_RELAY_TOKEN || \"\"}}"
             }
           ]
         },
@@ -92,13 +96,17 @@
     },
     {
       "parameters": {
-        "url": "={{$json.source_url}}",
+        "url": "={{$env.JUR_RADA_FETCH_RELAY_URL ? $env.JUR_RADA_FETCH_RELAY_URL + '?url=' + encodeURIComponent($json.source_url) : $json.source_url}}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "User-Agent",
               "value": "JuristBot/0.1 (+https://github.com/OleksiiSnikhovskyi/Jurist)"
+            },
+            {
+              "name": "X-JUR-RADA-FETCH-TOKEN",
+              "value": "={{$env.JUR_RADA_FETCH_RELAY_TOKEN || \"\"}}"
             }
           ]
         },

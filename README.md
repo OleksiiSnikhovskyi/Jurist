@@ -82,6 +82,15 @@ Workflow names should start with `JUR_` so they are easy to identify in n8n.
 - `JUR_Obsidian_Vault_Sync`: selected Obsidian note sync into workspace-scoped search.
 - `JUR_Rada_Law_Sync_Qwen`: Rada source sync/enrichment workflow.
 
+Optional Rada fetch relay for IP separation via Miledy:
+
+```bash
+JUR_RADA_FETCH_RELAY_URL=http://100.100.209.24:8031/fetch
+JUR_RADA_FETCH_RELAY_TOKEN=<shared-random-token>
+```
+
+The relay script is `scripts/rada_fetch_relay.py`; it allows only `https://zakon.rada.gov.ua/...` URLs and is not a general proxy.
+
 Telegram package answers include timing metadata in `n8n_intake_packages.metadata`, including vector search time, Ollama time, prompt/context size, and total processing time.
 
 ## Project Layout
