@@ -77,6 +77,8 @@
 - [x] Add source freshness metadata for laws, court practice, and regulatory materials.
 - [x] Fill the production `priority_manifest.csv` from official source exports and ingest the legal corpus. Rada catalog backfill completed control-safe with `missing_files: 0`; 18 catalog pages are preserved in `legal_sources/rada_catalog_failures.log` for retry from another IP/VPN.
 - [x] Schedule daily Rada arrivals sync and ingest delta updates. Daily sync now preserves Rada validity statuses (`current`, `pending_effective`, `obsolete`, `needs_verification`).
+- [x] Parse and store legal-source validity metadata from Rada updates: `effective_date`, `revision_date`, and `validity_note`.
+- [x] Automatically re-embed newly ingested law chunks after daily sync via `/n8n/maintenance/reembed-missing-chunks`.
 
 ## Stage 7A: Search Performance Foundation
 
@@ -98,6 +100,7 @@
 - [x] Keep only valid/current official documents in the production manifest; obsolete/invalid sources are excluded from production RAG search and retained only as auditable source records.
 - [x] Rebuild and validate `priority_manifest.csv` after corpus completion batches; current production manifest has no missing files.
 - [x] Re-ingest or refresh legal corpus chunks after embedding migration when needed; current `document_chunks.embedding` null count is 0.
+- [x] Keep daily Rada delta chunks searchable immediately by running automatic missing-embedding refresh after each sync.
 
 ## Stage 8: Telegram User Onboarding
 
