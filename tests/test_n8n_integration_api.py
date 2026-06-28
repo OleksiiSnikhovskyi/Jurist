@@ -572,6 +572,78 @@ def test_telegram_delete_active_client_profile_clears_selection(
 
 
 
+
+def test_telegram_batch_start_processing_requires_review_confirmation(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session, metadata={"intake_mode": "batch"})
+    fake_llm = FakeLegalAnalysisService()
+
+    original_init = N8nIntegrationService.__init__
+
+    def init_with_fake_llm(self: N8nIntegrationService, *args, **kwargs) -> None:
+        kwargs["legal_analysis_service"] = fake_llm
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(N8nIntegrationService, "__init__", init_with_fake_llm)
+    db_session.add(
+        N8nIntakePackage(
+            id="package-confirm",
+            workspace_id="workspace-1",
+            user_id="user-1",
+            channel="telegram",
+            external_chat_id="100",
+            external_user_id="200",
+            status="pending",
+        )
+    )
+    db_session.add(
+        N8nIntakeItem(
+            package_id="package-confirm",
+            item_type="document",
+            file_name="contract.docx",
+            text="Договір поставки з ризиком штрафу.",
+        )
+    )
+    db_session.commit()
+
+    first_payload = _post_telegram_text(client, "Почати обробку", "start_processing")
+
+    assert first_payload["status"] == "pending"
+    assert "Перед запуском перевірте склад пакета" in first_payload["reply_text"]
+    assert "1. contract.docx" in first_payload["reply_text"]
+    assert fake_llm.command is None
+    package = db_session.get(N8nIntakePackage, "package-confirm")
+    assert package is not None
+    assert package.metadata_json["awaiting_start_confirmation"] is True
+
+    second_payload = _post_telegram_text(client, "Почати обробку", "start_processing")
+
+    assert second_payload["status"] == "processed"
+    assert fake_llm.command is not None
+    db_session.refresh(package)
+    assert "awaiting_start_confirmation" not in package.metadata_json
+    assert "start_confirmed_at" in package.metadata_json
+
+
+def test_telegram_batch_start_processing_rejects_empty_package(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session, metadata={"intake_mode": "batch"})
+
+    payload = _post_telegram_text(client, "Почати обробку", "start_processing")
+
+    assert payload["status"] == "pending"
+    assert "Пакет порожній" in payload["reply_text"]
+    assert db_session.query(N8nIntakeItem).count() == 0
+
 def test_telegram_batch_materials_are_listed_with_numbers(
     client: TestClient,
     db_session: Session,
@@ -1597,6 +1669,12 @@ def test_telegram_start_processing_returns_ollama_answer(
 
     _post_telegram_text(client, "Пакетна обробка", "batch_processing_menu")
     _post_telegram_text(client, "Є договір поставки з простроченням оплати.")
+    first_payload = _post_telegram_text(client, "Почати обробку", "start_processing")
+
+    assert first_payload["status"] == "pending"
+    assert "Перед запуском перевірте склад пакета" in first_payload["reply_text"]
+    assert fake_llm.command is None
+
     payload = _post_telegram_text(client, "Почати обробку", "start_processing")
 
     assert payload["status"] == "processed"

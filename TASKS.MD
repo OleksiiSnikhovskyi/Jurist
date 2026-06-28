@@ -115,8 +115,8 @@
 - [x] Deploy updated Telegram profile prompt buttons to the active n8n workflow.
 - [x] Add bot commands for choosing active client profile.
 - [ ] Add bot commands for choosing workspace/case.
-- [ ] Add package review UX before `Почати обробку`.
-- [ ] Add delete-one-material and cancel-processing behavior end to end.
+- [x] Add package review UX before `Почати обробку`.
+- [x] Add delete-one-material and cancel-processing behavior end to end.
 
 ## Stage 9: Legal Answer Production
 
@@ -139,9 +139,3 @@
 - [ ] Add backup/restore instructions for `jur_db`.
 - [ ] Add CI workflow for tests and migration checks.
 - [x] Replace deterministic embeddings configuration with a production Ollama embedding provider.
-
-
-
-
-
-

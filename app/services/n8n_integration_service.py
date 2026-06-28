@@ -237,17 +237,26 @@ class N8nIntegrationService:
             reply_text = "Пакет скасовано. Для нового комплекту відкрийте 'Пакетна обробка'."
             reply_menu = "batch"
         elif event.action == "start_processing":
-            package.status = "queued"
-            package.requested_agent = event.requested_agent or "orchestrator"
-            package.question = event.question or event.text
-            self._attach_active_client_profile(package, event)
-            self._clear_incomplete_client_profile_draft(event)
-            reply_text = self._try_process_package_with_llm(
+            review_reply = self._maybe_request_batch_start_confirmation(
                 package=package,
-                workspace_id=event.workspace_id,
-                user_id=event.user_id,
+                event=event,
+                batch_mode=batch_mode,
             )
-            reply_menu = "batch"
+            if review_reply is not None:
+                reply_text = review_reply
+                reply_menu = "batch"
+            else:
+                package.status = "queued"
+                package.requested_agent = event.requested_agent or "orchestrator"
+                package.question = event.question or event.text
+                self._attach_active_client_profile(package, event)
+                self._clear_incomplete_client_profile_draft(event)
+                reply_text = self._try_process_package_with_llm(
+                    package=package,
+                    workspace_id=event.workspace_id,
+                    user_id=event.user_id,
+                )
+                reply_menu = "batch"
         else:
             added_count = self._append_event_items(package, event)
             if added_count:
@@ -1768,6 +1777,35 @@ class N8nIntegrationService:
             return None
         metadata = dict(binding.metadata_json or {})
         return metadata.get("intake_mode")
+
+    def _maybe_request_batch_start_confirmation(
+        self,
+        *,
+        package: N8nIntakePackage,
+        event: TelegramIntakeEvent,
+        batch_mode: bool,
+    ) -> str | None:
+        if not batch_mode:
+            return None
+        counts = self._count_items(package.id)
+        metadata = dict(package.metadata_json or {})
+        if counts.total == 0:
+            metadata.pop("awaiting_start_confirmation", None)
+            package.metadata_json = metadata
+            return "Пакет порожній. Додайте матеріали перед запуском обробки."
+        if metadata.get("awaiting_start_confirmation"):
+            metadata.pop("awaiting_start_confirmation", None)
+            metadata["start_confirmed_at"] = datetime.now(UTC).isoformat()
+            package.metadata_json = metadata
+            return None
+        metadata["awaiting_start_confirmation"] = True
+        metadata["start_confirmation_requested_at"] = datetime.now(UTC).isoformat()
+        package.metadata_json = metadata
+        return (
+            "Перед запуском перевірте склад пакета. Якщо все правильно, натисніть "
+            "'Почати обробку' ще раз.\n\n"
+            f"{self._format_package_materials(package.id)}"
+        )
 
     def _event_with_batch_text_action(
         self,
