@@ -33,7 +33,7 @@ function applyBatchMenu(workflow) {
   mainReplyNode.parameters.replyKeyboard.rows = [
     {
       row: {
-        buttons: [{ text: "Пакетна обробка" }, { text: "Клієнти" }],
+        buttons: [{ text: "Пакетна обробка" }, { text: "Клієнти" }, { text: "Справи" }],
       },
     },
     {

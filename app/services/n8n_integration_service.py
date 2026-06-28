@@ -14,6 +14,7 @@ from app.models.lawyer_profile import LawyerProfile
 from app.models.legal_opinion import LegalOpinion
 from app.models.legal_source import LegalSource
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
+from app.models.workspace import Workspace, WorkspaceMember
 from app.repositories.document_repository import DocumentRepository
 from app.schemas.n8n_schema import (
     N8nExtractedTextRequest,
@@ -201,6 +202,10 @@ class N8nIntegrationService:
         profile_response = self._handle_profile_onboarding(event)
         if profile_response is not None:
             return profile_response
+
+        workspace_response = self._handle_workspace_selection(event)
+        if workspace_response is not None:
+            return workspace_response
 
         client_profile_response = self._handle_client_profile_onboarding(event)
         if client_profile_response is not None:
@@ -1444,6 +1449,141 @@ class N8nIntegrationService:
                 continue
         raise LegalSourceValidationError(f"Unsupported date format: {value}")
 
+    def _handle_workspace_selection(self, event: TelegramIntakeEvent) -> N8nIntakeResponse | None:
+        binding = self._get_active_binding(event.telegram_user_id)
+        if binding is None:
+            return None
+        metadata = dict(binding.metadata_json or {})
+        onboarding_state = metadata.get("onboarding_state")
+        if event.action == "workspace_menu":
+            workspaces = self._list_user_workspaces(event.user_id)
+            if not workspaces:
+                return N8nIntakeResponse(
+                    ok=True,
+                    reply_text="Для вашого користувача ще немає доступних справ/workspaces.",
+                )
+            metadata["onboarding_state"] = "awaiting_workspace_selection"
+            metadata["workspace_selection"] = self._workspace_selection(workspaces)
+            metadata.pop("client_profile_draft", None)
+            metadata.pop("client_profile_edit_id", None)
+            metadata.pop("client_profile_selection", None)
+            binding.metadata_json = metadata
+            self.db.commit()
+            active_workspace = self._active_workspace_from_metadata(metadata) or self.db.get(
+                Workspace,
+                event.workspace_id,
+            )
+            active_text = (
+                f"Активна справа: {active_workspace.name}"
+                if active_workspace is not None
+                else "Активна справа не обрана."
+            )
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text=(
+                    f"Підменю справ/workspaces.\n{active_text}\n\n"
+                    "Надішліть номер справи зі списку:\n"
+                    f"{self._format_numbered_workspaces(workspaces)}"
+                ),
+            )
+
+        if onboarding_state == "awaiting_workspace_selection" and event.action == "free_text" and event.text:
+            workspace = self._find_workspace_by_selection(
+                user_id=event.user_id,
+                selection_text=event.text,
+                metadata=metadata,
+            )
+            if workspace is None:
+                return N8nIntakeResponse(
+                    ok=True,
+                    reply_text="Не знайшов такої справи. Надішліть номер зі списку або натисніть 'Назад'.",
+                )
+            previous_workspace_id = metadata.get("active_workspace_id") or binding.workspace_id
+            metadata["active_workspace_id"] = workspace.id
+            metadata.pop("onboarding_state", None)
+            metadata.pop("workspace_selection", None)
+            if previous_workspace_id != workspace.id:
+                metadata.pop("active_client_profile_id", None)
+            binding.metadata_json = metadata
+            self.db.commit()
+            return N8nIntakeResponse(
+                ok=True,
+                reply_text=(
+                    f"Активна справа: {workspace.name}. "
+                    "Наступні матеріали, клієнти і відповіді будуть прив'язані до цієї справи."
+                ),
+            )
+
+        return None
+
+    def _list_user_workspaces(self, user_id: str | None) -> list[Workspace]:
+        if not user_id:
+            return []
+        return (
+            self.db.query(Workspace)
+            .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+            .filter(WorkspaceMember.user_id == user_id)
+            .order_by(Workspace.created_at.desc(), Workspace.name.asc())
+            .all()
+        )
+
+    def _workspace_selection(self, workspaces: list[Workspace]) -> list[dict[str, str]]:
+        return [
+            {"number": str(index), "id": workspace.id, "name": workspace.name}
+            for index, workspace in enumerate(workspaces[:10], start=1)
+        ]
+
+    def _format_numbered_workspaces(self, workspaces: list[Workspace]) -> str:
+        return "\n".join(
+            f"{index}. {workspace.name} ({workspace.workspace_type})"
+            for index, workspace in enumerate(workspaces[:10], start=1)
+        )
+
+    def _find_workspace_by_selection(
+        self,
+        *,
+        user_id: str | None,
+        selection_text: str,
+        metadata: dict,
+    ) -> Workspace | None:
+        clean_selection = selection_text.strip()
+        selected_id = None
+        if clean_selection.isdecimal():
+            for item in metadata.get("workspace_selection") or []:
+                if str(item.get("number")) == clean_selection:
+                    selected_id = item.get("id")
+                    break
+            if selected_id is None:
+                workspaces = self._list_user_workspaces(user_id)
+                index = int(clean_selection) - 1
+                if 0 <= index < min(len(workspaces), 10):
+                    selected_id = workspaces[index].id
+        else:
+            for workspace in self._list_user_workspaces(user_id):
+                if workspace.name.lower() == clean_selection.lower():
+                    selected_id = workspace.id
+                    break
+        if not selected_id or not user_id:
+            return None
+        workspace = self.db.get(Workspace, selected_id)
+        if workspace is None:
+            return None
+        membership = (
+            self.db.query(WorkspaceMember)
+            .filter(
+                WorkspaceMember.workspace_id == workspace.id,
+                WorkspaceMember.user_id == user_id,
+            )
+            .one_or_none()
+        )
+        return workspace if membership is not None else None
+
+    def _active_workspace_from_metadata(self, metadata: dict) -> Workspace | None:
+        active_workspace_id = metadata.get("active_workspace_id")
+        if not active_workspace_id:
+            return None
+        return self.db.get(Workspace, active_workspace_id)
+
     def _handle_client_profile_onboarding(self, event: TelegramIntakeEvent) -> N8nIntakeResponse | None:
         binding = self._get_active_binding(event.telegram_user_id)
         if binding is None:
@@ -1460,11 +1600,12 @@ class N8nIntegrationService:
             ) and (
                 onboarding_state.startswith("awaiting_client_") or onboarding_state == "client_menu"
             )
-            if is_client_onboarding:
+            if is_client_onboarding or onboarding_state == "awaiting_workspace_selection":
                 metadata.pop("onboarding_state", None)
                 metadata.pop("client_profile_draft", None)
                 metadata.pop("client_profile_edit_id", None)
                 metadata.pop("client_profile_selection", None)
+                metadata.pop("workspace_selection", None)
                 binding.metadata_json = metadata
                 self.db.commit()
             elif metadata.get("intake_mode") == "batch":
@@ -2176,11 +2317,33 @@ class N8nIntegrationService:
         if binding is None:
             return event
 
+        metadata = dict(binding.metadata_json or {})
+        active_workspace_id = self._valid_active_workspace_id(
+            metadata.get("active_workspace_id"),
+            binding.user_id,
+        )
         updates = {
-            "workspace_id": event.workspace_id or binding.workspace_id,
+            "workspace_id": event.workspace_id or active_workspace_id or binding.workspace_id,
             "user_id": event.user_id or binding.user_id,
         }
         return event.model_copy(update=updates)
+
+    def _valid_active_workspace_id(
+        self,
+        workspace_id: str | None,
+        user_id: str | None,
+    ) -> str | None:
+        if not workspace_id or not user_id:
+            return None
+        membership = (
+            self.db.query(WorkspaceMember)
+            .filter(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == user_id,
+            )
+            .one_or_none()
+        )
+        return workspace_id if membership is not None else None
 
     def _get_active_binding(self, telegram_user_id: str | None) -> N8nTelegramBinding | None:
         if not telegram_user_id:

@@ -18,7 +18,7 @@ mainReplyNode.parameters.text = "={{$json.reply_text || 'Головне меню
 mainReplyNode.parameters.replyKeyboard.rows = [
   {
     row: {
-      buttons: [{ text: "Пакетна обробка" }, { text: "Клієнти" }],
+      buttons: [{ text: "Пакетна обробка" }, { text: "Клієнти" }, { text: "Справи" }],
     },
   },
   {

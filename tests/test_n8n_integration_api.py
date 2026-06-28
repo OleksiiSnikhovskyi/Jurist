@@ -339,6 +339,95 @@ def test_edit_profile_prompt_updates_existing_lawyer_profile(
     assert profile.system_prompt == "Я адвокат у сфері податкових спорів, відповідай стисло."
 
 
+
+def test_telegram_workspace_selection_switches_active_case(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    db_session.add(Workspace(id="workspace-2", name="Case B", owner_id="user-1", workspace_type="case"))
+    db_session.add(
+        WorkspaceMember(
+            id="member-2",
+            workspace_id="workspace-2",
+            user_id="user-1",
+            role="lawyer",
+        )
+    )
+    db_session.add(
+        ClientProfile(
+            id="client-1",
+            workspace_id="workspace-1",
+            created_by="user-1",
+            display_name="ТОВ Старий клієнт",
+        )
+    )
+    _seed_telegram_binding(db_session, metadata={"active_client_profile_id": "client-1"})
+
+    list_payload = _post_telegram_text(client, "Справи", "workspace_menu")
+
+    assert "Підменю справ/workspaces" in list_payload["reply_text"]
+    assert "1. Case B" in list_payload["reply_text"]
+    assert "2. Workspace" in list_payload["reply_text"]
+
+    selected_payload = _post_telegram_text(client, "1")
+
+    assert "Активна справа: Case B" in selected_payload["reply_text"]
+    binding = db_session.query(N8nTelegramBinding).one()
+    assert binding.metadata_json["active_workspace_id"] == "workspace-2"
+    assert "active_client_profile_id" not in binding.metadata_json
+
+
+def test_telegram_intake_uses_active_workspace_from_binding_metadata(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    db_session.add(Workspace(id="workspace-2", name="Case B", owner_id="user-1", workspace_type="case"))
+    db_session.add(
+        WorkspaceMember(
+            id="member-2",
+            workspace_id="workspace-2",
+            user_id="user-1",
+            role="lawyer",
+        )
+    )
+    _seed_telegram_binding(db_session, metadata={"active_workspace_id": "workspace-2"})
+
+    payload = _post_telegram_text(client, "Факти для нової справи")
+
+    assert payload["ok"] is True
+    package = db_session.query(N8nIntakePackage).one()
+    assert package.workspace_id == "workspace-2"
+
+
+def test_telegram_workspace_selection_cancelled_by_main_menu(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    db_session.add(Workspace(id="workspace-2", name="Case B", owner_id="user-1", workspace_type="case"))
+    db_session.add(
+        WorkspaceMember(
+            id="member-2",
+            workspace_id="workspace-2",
+            user_id="user-1",
+            role="lawyer",
+        )
+    )
+    _seed_telegram_binding(db_session)
+
+    _post_telegram_text(client, "Справи", "workspace_menu")
+    payload = _post_telegram_text(client, "Назад", "main_menu")
+
+    assert "Головне меню" in payload["reply_text"]
+    binding = db_session.query(N8nTelegramBinding).one()
+    assert "workspace_selection" not in binding.metadata_json
+    assert "onboarding_state" not in binding.metadata_json
+
 def test_telegram_client_profile_onboarding_creates_active_client(
     client: TestClient,
     db_session: Session,

@@ -114,7 +114,7 @@
 - [x] Create first real Telegram binding for the production workspace.
 - [x] Deploy updated Telegram profile prompt buttons to the active n8n workflow.
 - [x] Add bot commands for choosing active client profile.
-- [ ] Add bot commands for choosing workspace/case.
+- [x] Add bot commands for choosing workspace/case.
 - [x] Add package review UX before `Почати обробку`.
 - [x] Add delete-one-material and cancel-processing behavior end to end.
 
