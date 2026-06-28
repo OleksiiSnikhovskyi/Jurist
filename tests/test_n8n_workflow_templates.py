@@ -60,12 +60,17 @@ def test_telegram_intake_template_has_required_actions() -> None:
 
 def test_obsidian_template_uses_batch_processing() -> None:
     workflow = json.loads((WORKFLOW_DIR / "JUR_Obsidian_Vault_Sync.json").read_text(encoding="utf-8"))
+    workflow_text = json.dumps(workflow, ensure_ascii=False)
     node_types = {node["type"] for node in workflow["nodes"]}
 
     assert "n8n-nodes-base.webhook" in node_types
     assert "n8n-nodes-base.splitInBatches" in node_types
     assert "n8n-nodes-base.httpRequest" in node_types
-
+    assert "parseFrontmatter" in workflow_text
+    assert "frontmatter.aliases" in workflow_text
+    assert "legal_source_aliases" in workflow_text
+    assert "document_number" in workflow_text
+    assert "source_url" in workflow_text
 
 def test_rada_qwen_template_syncs_official_sources_through_api() -> None:
     workflow = json.loads((WORKFLOW_DIR / "JUR_Rada_Law_Sync_Qwen.json").read_text(encoding="utf-8"))

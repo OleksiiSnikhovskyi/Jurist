@@ -2,6 +2,7 @@ from app.models.audit_log import AuditLog
 from app.models.client_profile import ClientProfile
 from app.models.document import Document, DocumentChunk
 from app.models.legal_opinion import LegalOpinion
+from app.models.legal_source_alias import LegalSourceAlias
 from app.models.legal_source import LegalSource
 from app.models.lawyer_profile import LawyerProfile
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
@@ -14,6 +15,7 @@ __all__ = [
     "Document",
     "DocumentChunk",
     "LegalOpinion",
+    "LegalSourceAlias",
     "LegalSource",
     "LawyerProfile",
     "N8nIntakeItem",
@@ -23,3 +25,4 @@ __all__ = [
     "Workspace",
     "WorkspaceMember",
 ]
+

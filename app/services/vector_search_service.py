@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.document import DocumentChunk
 from app.repositories.document_repository import DocumentRepository
+from app.services.legal_source_alias_service import normalize_legal_alias
 from app.services.access_control import AccessControlService, WorkspacePermission
 from app.services.embedding_service import (
     EmbeddingProvider,
@@ -154,16 +155,24 @@ class VectorSearchService:
             )
             for row in rows
         ]
-
     def _find_exact_document_ids(self, command: VectorSearchCommand) -> list[str]:
         terms = command.exact_terms or extract_legal_reference_terms(command.query)
+        terms = dedupe_terms([*terms, *extract_known_alias_terms(command.query)])
         if not terms:
             return []
 
+        normalized_terms = [normalize_legal_alias(term) for term in terms]
         rows = self.db.execute(
             text(
                 """
-                WITH matched_sources AS (
+                WITH matched_aliases AS (
+                    SELECT document_id, source_url, source_name, document_number
+                    FROM legal_source_aliases
+                    WHERE normalized_alias = ANY(CAST(:normalized_terms AS text[]))
+                      AND (workspace_id IS NULL OR workspace_id = CAST(:workspace_id AS uuid))
+                    LIMIT 20
+                ),
+                matched_sources AS (
                     SELECT source_url, source_name, document_number
                     FROM legal_sources
                     WHERE validity_status IS DISTINCT FROM 'invalid'
@@ -173,22 +182,35 @@ class VectorSearchService:
                         OR source_name ILIKE ANY(CAST(:like_terms AS text[]))
                       )
                     LIMIT 20
+                ),
+                source_matches AS (
+                    SELECT source_url, source_name, document_number FROM matched_sources
+                    UNION ALL
+                    SELECT source_url, source_name, document_number FROM matched_aliases
+                    WHERE source_url IS NOT NULL OR source_name IS NOT NULL OR document_number IS NOT NULL
                 )
                 SELECT DISTINCT d.id
                 FROM documents d
-                JOIN matched_sources s
+                LEFT JOIN source_matches s
                   ON (
                     (s.source_url IS NOT NULL AND d.file_path ILIKE '%' || s.source_url || '%')
                     OR (s.document_number IS NOT NULL AND d.document_name ILIKE '%' || s.document_number || '%')
                     OR d.document_name = s.source_name
                   )
                 WHERE d.workspace_id = :workspace_id
+                  AND (
+                    d.id IN (SELECT document_id FROM matched_aliases WHERE document_id IS NOT NULL)
+                    OR s.source_url IS NOT NULL
+                    OR s.source_name IS NOT NULL
+                    OR s.document_number IS NOT NULL
+                  )
                 LIMIT 20
                 """
             ),
             {
                 "workspace_id": command.workspace_id,
                 "terms": terms,
+                "normalized_terms": normalized_terms,
                 "like_terms": [f"%{term}%" for term in terms],
             },
         ).all()
@@ -213,6 +235,31 @@ LEGAL_REFERENCE_PATTERN = re.compile(
 )
 
 
+
+KNOWN_LEGAL_ALIAS_PATTERN = re.compile(
+    r"\b(?:ЦКУ|ГКУ|ГПК|ЦПК|КПК|ККУ|КАСУ|ПКУ|БКУ|ЗКУ|КЗпП)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def extract_known_alias_terms(text_value: str) -> list[str]:
+    return dedupe_terms(match.upper() for match in KNOWN_LEGAL_ALIAS_PATTERN.findall(text_value))
+
+
+def dedupe_terms(values) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        term = " ".join(str(value).split()).strip(" .;,")
+        if not term:
+            continue
+        key = term.lower()
+        if key in seen:
+            continue
+        terms.append(term)
+        seen.add(key)
+    return terms
+
 def extract_legal_reference_terms(text_value: str) -> list[str]:
     terms = []
     for match in LEGAL_REFERENCE_PATTERN.findall(text_value):
@@ -220,3 +267,4 @@ def extract_legal_reference_terms(text_value: str) -> list[str]:
         if normalized and normalized not in terms:
             terms.append(normalized)
     return terms
+

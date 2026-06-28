@@ -13,6 +13,8 @@ from app.models.audit_log import AuditLog
 from app.models.client_profile import ClientProfile
 from app.models.document import Document, DocumentChunk
 from app.models.lawyer_profile import LawyerProfile
+from app.models.legal_opinion import LegalOpinion
+from app.models.legal_source_alias import LegalSourceAlias
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -43,6 +45,8 @@ def db_session() -> Generator[Session, None, None]:
             ClientProfile.__table__,
             Document.__table__,
             DocumentChunk.__table__,
+            LegalSourceAlias.__table__,
+            LegalOpinion.__table__,
             AuditLog.__table__,
             N8nIntakePackage.__table__,
             N8nIntakeItem.__table__,
@@ -1250,6 +1254,14 @@ def test_start_package_processing_can_return_ollama_answer(
     assert "договір поставки" in fake_llm.command.package_text
     db_session.refresh(package)
     assert package.metadata_json["llm_model"] == "fake-qwen"
+    opinion = db_session.query(LegalOpinion).one()
+    assert opinion.workspace_id == "workspace-1"
+    assert opinion.user_id == "user-1"
+    assert opinion.question == "Проаналізуй ризики"
+    assert opinion.answer == "LLM відповідь для юриста."
+    assert opinion.sources_used["package_id"] == "package-llm"
+    assert opinion.sources_used["llm_model"] == "fake-qwen"
+    assert package.metadata_json["legal_opinion_id"] == opinion.id
     assert package.metadata_json["processing_timings"]["source_fragment_count"] >= 0
     assert package.metadata_json["processing_timings"]["total_seconds"] >= 0
     timing_records = [
@@ -1365,6 +1377,7 @@ def test_attach_extracted_text_indexes_telegram_attachment(
     assert document.file_path == "telegram://document/telegram-file-1"
     assert document.document_type == "telegram_pdf"
     assert db_session.query(DocumentChunk).filter_by(document_id=document.id).count() == 1
+
 
 
 def test_attach_extracted_text_queues_auto_processing_without_blocking(
@@ -1513,6 +1526,11 @@ def test_obsidian_sync_note_creates_document_and_chunks(
             "markdown": "Факти справи.\n\nПравова позиція та докази.",
             "tags": ["case", "contract"],
             "links": ["Related Note"],
+            "frontmatter": {
+                "aliases": ["ДБН проектна документація", "DBN A.2.2-14"],
+                "document_number": "ДБН А.2.2-14:2016",
+                "source_name": "ДБН А.2.2-14:2016",
+            },
         },
     )
 
@@ -1525,4 +1543,17 @@ def test_obsidian_sync_note_creates_document_and_chunks(
     assert document.document_type == "obsidian_markdown"
     assert document.file_path == "obsidian://cases/case-1.md"
     assert db_session.query(DocumentChunk).filter_by(document_id=document.id).count() == 1
+    aliases = db_session.query(LegalSourceAlias).filter_by(document_id=document.id).all()
+    assert {alias.normalized_alias for alias in aliases} >= {
+        "case 1",
+        "case-1",
+        "дбн проектна документація",
+        "dbn a.2.2-14",
+        "дбн а.2.2-14:2016",
+    }
+    assert all(alias.workspace_id == "workspace-1" for alias in aliases)
+
+
+
+
 

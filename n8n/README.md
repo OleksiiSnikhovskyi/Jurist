@@ -88,7 +88,7 @@ Obsidian can be used as a lawyer's Markdown knowledge vault. A future `JUR_Obsid
 Expected Obsidian inputs:
 
 - Markdown note body.
-- YAML frontmatter.
+- YAML frontmatter, including `aliases`, `document_number`, `source_name`, and `source_url` when a note represents or points to a legal source.
 - Tags.
 - Internal links and backlinks where available.
 - Folder path as workspace/context metadata.
@@ -123,4 +123,5 @@ Imported into `https://n8n.csc-ua.tech` on 2026-06-13:
 - `JUR_Rada_Law_Sync_Qwen`: `idhN3BnLzF6VtTyp` (`https://n8n.csc-ua.tech/workflow/idhN3BnLzF6VtTyp`)
 
 `JUR_Bot_Intake_Queue` uses the n8n Telegram credential `PravnykAi`. The workflows are active, but production processing still requires `JUR_API_BASE_URL` to point to a reachable FastAPI deployment.
+
 

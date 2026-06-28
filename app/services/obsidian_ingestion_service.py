@@ -18,6 +18,7 @@ class ObsidianNote:
     frontmatter: dict[str, Any] = field(default_factory=dict)
     tags: list[str] = field(default_factory=list)
     links: list[str] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class ObsidianIngestionService:
         relative_path = _relative_path(path, Path(vault_root) if vault_root else path.parent)
         inline_tags = extract_inline_tags(body)
         frontmatter_tags = normalize_tags(frontmatter.get("tags"))
+        aliases = normalize_aliases(frontmatter)
         return ObsidianNote(
             path=relative_path,
             title=str(frontmatter.get("title") or path.stem),
@@ -43,6 +45,7 @@ class ObsidianIngestionService:
             frontmatter=frontmatter,
             tags=sorted(set(frontmatter_tags + inline_tags)),
             links=extract_wiki_links(body),
+            aliases=aliases,
         )
 
     def parse_vault(self, vault_root: str | Path) -> list[ObsidianNote]:
@@ -77,6 +80,7 @@ class ObsidianIngestionService:
                     "title": note.title,
                     "tags": note.tags,
                     "links": note.links,
+                    "aliases": note.aliases,
                 },
             )
             for index, chunk in enumerate(chunks)
@@ -133,6 +137,25 @@ def normalize_tags(value: Any) -> list[str]:
     return [_clean_tag(str(value))]
 
 
+
+def normalize_aliases(frontmatter: dict[str, Any]) -> list[str]:
+    values: list[Any] = []
+    for key in ("aliases", "alias", "legal_aliases", "legal_source_aliases"):
+        value = frontmatter.get(key)
+        if isinstance(value, list):
+            values.extend(value)
+        elif value:
+            values.append(value)
+    aliases: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        alias = str(value).strip()
+        normalized = " ".join(alias.split()).lower()
+        if alias and normalized not in seen:
+            aliases.append(alias)
+            seen.add(normalized)
+    return aliases
+
 def extract_inline_tags(text: str) -> list[str]:
     return sorted({_clean_tag(match) for match in INLINE_TAG_PATTERN.findall(text)})
 
@@ -169,3 +192,4 @@ def _relative_path(path: Path, root: Path) -> str:
         return path.relative_to(root).as_posix()
     except ValueError:
         return path.as_posix()
+

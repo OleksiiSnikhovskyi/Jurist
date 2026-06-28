@@ -20,4 +20,12 @@ class LegalOpinion(Base):
     risk_level: Mapped[str | None] = mapped_column(String(50))
     sources_used: Mapped[dict | None] = mapped_column(JSONVariant)
     confidence_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    review_status: Mapped[str] = mapped_column(String(50), default="draft", nullable=False)
+    reviewed_by: Mapped[str | None] = mapped_column(GUID(), ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+

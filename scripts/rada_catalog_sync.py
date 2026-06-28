@@ -4,12 +4,14 @@ import argparse
 import csv
 import gzip
 import json
+import logging
 import re
 import sys
 from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
@@ -24,6 +26,11 @@ from scripts.prepare_priority_legal_source_manifest import (  # noqa: E402
 
 RADA_LAWS_URL = "https://zakon.rada.gov.ua/laws"
 RADA_NEW_ARRIVALS_URL = "https://zakon.rada.gov.ua/laws/main/nn"
+
+DEFAULT_USER_AGENT = "JuristBot/1.0 (Browser-like; +https://github.com/OleksiiSnikhovskyi/Jurist)"
+DEFAULT_REQUEST_TIMEOUT = 30.0
+
+logger = logging.getLogger(__name__)
 
 DOCUMENT_TYPE_MAP = {
     "Конституція України": "constitution",
@@ -129,18 +136,33 @@ def parse_rada_arrivals_html(
     ]
 
 
-def read_input(value: str) -> str:
+def read_input(
+    value: str, *, user_agent: str = DEFAULT_USER_AGENT, timeout: float = DEFAULT_REQUEST_TIMEOUT
+) -> str:
     parsed = urlparse(value)
     if parsed.scheme in {"http", "https"}:
-        request = Request(
-            value,
-            headers={
-                "User-Agent": "JuristBot/0.1 (+https://github.com/)",
-                "Accept-Encoding": "gzip, identity",
-            },
-        )
-        with urlopen(request, timeout=30) as response:
-            return _decode_response_body(response.read(), response.headers.get("Content-Encoding"))
+        headers = {
+            "User-Agent": user_agent,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br, identity",
+            "Referer": "https://zakon.rada.gov.ua/laws/main",
+            "Connection": "keep-alive",
+        }
+        request = Request(value, headers=headers)
+        request.headers.update(headers)
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                return _decode_response_body(response.read(), response.headers.get("Content-Encoding"))
+        except HTTPError as exc:
+            body_excerpt = ""
+            try:
+                body = exc.read()[:300].decode("utf-8", errors="ignore")
+                body_excerpt = f" | body_excerpt={body!r}"
+            except Exception:
+                pass
+            logger.error(f"HTTP {exc.code} fetching {value}{body_excerpt}")
+            raise
     return Path(value).read_text(encoding="utf-8", errors="ignore")
 
 
@@ -337,3 +359,4 @@ def _squash(value: str) -> str:
 
 if __name__ == "__main__":
     main()
+

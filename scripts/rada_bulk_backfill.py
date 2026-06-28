@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import argparse
 import csv
+import functools
 import json
+import logging
 import os
+import random
 import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -17,6 +21,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scripts.prepare_priority_legal_source_manifest import OUTPUT_FIELDS, prepare_manifest_rows
 from scripts.rada_catalog_sync import (
+    DEFAULT_REQUEST_TIMEOUT,
+    DEFAULT_USER_AGENT,
     download_manifest_documents,
     parse_rada_arrivals_html,
     read_input,
@@ -26,6 +32,8 @@ DEFAULT_USER_ID = "00000000-0000-0000-0000-000000000001"
 DEFAULT_WORKSPACE_ID = "00000000-0000-0000-0000-000000000101"
 
 RADA_FULL_CATALOG_PAGE_URL = "https://zakon.rada.gov.ua/laws/main/a/page"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -69,6 +77,9 @@ def main() -> None:
     parser.add_argument("--sleep-seconds", type=float, default=0.5)
     parser.add_argument("--catalog-retries", type=int, default=3)
     parser.add_argument("--catalog-retry-seconds", type=float, default=10.0)
+    parser.add_argument("--catalog-jitter-seconds", type=float, default=0.0)
+    parser.add_argument("--user-agent", default=DEFAULT_USER_AGENT)
+    parser.add_argument("--request-timeout", type=float, default=DEFAULT_REQUEST_TIMEOUT)
     parser.add_argument("--chunk-size", type=int, default=1200)
     parser.add_argument("--overlap", type=int, default=150)
     parser.add_argument(
@@ -78,6 +89,22 @@ def main() -> None:
     )
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--skip-forbidden-pages",
+        action="store_true",
+        help="If a catalog page returns 403 Forbidden, record it and skip instead of stopping.",
+    )
+    parser.add_argument(
+        "--failure-log",
+        default="legal_sources/rada_catalog_failures.log",
+        help="JSON-lines log of forbidden/failed catalog pages.",
+    )
+    parser.add_argument(
+        "--catalog-page-url-style",
+        choices=["auto", "slash", "no-slash"],
+        default="auto",
+        help="URL pagination style: auto (default behavior), slash (always /page/N/), no-slash (always /pageN).",
+    )
     args = parser.parse_args()
 
     result = run_backfill(
@@ -96,11 +123,17 @@ def main() -> None:
         sleep_seconds=args.sleep_seconds,
         catalog_retries=args.catalog_retries,
         catalog_retry_seconds=args.catalog_retry_seconds,
+        catalog_jitter_seconds=args.catalog_jitter_seconds,
+        user_agent=args.user_agent,
+        request_timeout=args.request_timeout,
         chunk_size=args.chunk_size,
         overlap=args.overlap,
         current_only=not args.include_non_current,
         overwrite=args.overwrite,
         dry_run=args.dry_run,
+        skip_forbidden_pages=args.skip_forbidden_pages,
+        failure_log_path=Path(args.failure_log),
+        url_style=args.catalog_page_url_style,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -122,11 +155,17 @@ def run_backfill(
     sleep_seconds: float = 0.5,
     catalog_retries: int = 3,
     catalog_retry_seconds: float = 10.0,
+    catalog_jitter_seconds: float = 0.0,
+    user_agent: str = DEFAULT_USER_AGENT,
+    request_timeout: float = DEFAULT_REQUEST_TIMEOUT,
     chunk_size: int = 1200,
     overlap: int = 150,
     current_only: bool = False,
     overwrite: bool = False,
     dry_run: bool = False,
+    skip_forbidden_pages: bool = False,
+    failure_log_path: Path | None = None,
+    url_style: str = "auto",
     fetcher: Any = read_input,
 ) -> dict[str, int | str | bool | None]:
     state = load_state(state_path)
@@ -136,7 +175,15 @@ def run_backfill(
     state_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     documents_dir.mkdir(parents=True, exist_ok=True)
+    if failure_log_path is None:
+        failure_log_path = manifest_path.parent / "rada_catalog_failures.log"
+    failure_log_path.parent.mkdir(parents=True, exist_ok=True)
     stopped_reason = None
+
+    if fetcher is read_input:
+        fetcher = functools.partial(
+            read_input, user_agent=user_agent, timeout=request_timeout
+        )
 
     SessionLocal = None
     if not dry_run:
@@ -155,14 +202,25 @@ def run_backfill(
         if limit_documents is not None and accepted_documents >= limit_documents:
             break
 
-        page_url = build_catalog_page_url(catalog_url, state.next_offset)
+        page_url = build_catalog_page_url(catalog_url, state.next_offset, url_style=url_style)
         try:
             html = fetch_catalog_page_with_retries(
                 page_url,
                 fetcher=fetcher,
                 retries=catalog_retries,
                 retry_seconds=catalog_retry_seconds,
+                jitter_seconds=catalog_jitter_seconds,
             )
+        except HTTPError as exc:
+            if exc.code == 403 and skip_forbidden_pages:
+                logger.warning(f"Catalog page {state.next_offset} ({page_url}) returned 403 Forbidden, recording and skipping.")
+                _record_failed_page(failure_log_path, state.next_offset, page_url, 403, str(exc))
+                state = save_progress(state, state_path, next_offset=state.next_offset + page_size)
+                page_count += 1
+                time.sleep(max(0.0, sleep_seconds))
+                continue
+            stopped_reason = f"catalog_fetch_failed:{type(exc).__name__}:HTTP {exc.code}"
+            break
         except Exception as exc:
             stopped_reason = f"catalog_fetch_failed:{type(exc).__name__}:{exc}"
             break
@@ -259,13 +317,21 @@ def run_backfill(
     }
 
 
-def build_catalog_page_url(catalog_url: str, offset: int) -> str:
+def build_catalog_page_url(catalog_url: str, offset: int, url_style: str = "auto") -> str:
     clean_url = catalog_url.rstrip("/")
     if offset <= 1:
         return clean_url
-    if offset >= 1000:
-        return f"{clean_url}{offset}/"
-    return f"{clean_url}{offset}"
+
+    if url_style == "slash":
+        return f"{clean_url}/{offset}/"
+    if url_style == "no-slash":
+        return f"{clean_url}{offset}"
+    if url_style == "auto":
+        if offset >= 1000:
+            return f"{clean_url}{offset}/"
+        return f"{clean_url}{offset}"
+
+    raise ValueError(f"Unknown url_style: {url_style}")
 
 
 def fetch_catalog_page_with_retries(
@@ -274,6 +340,7 @@ def fetch_catalog_page_with_retries(
     fetcher: Any,
     retries: int,
     retry_seconds: float,
+    jitter_seconds: float = 0.0,
 ) -> str:
     attempts = max(1, retries + 1)
     last_error: Exception | None = None
@@ -284,7 +351,9 @@ def fetch_catalog_page_with_retries(
             last_error = exc
             if attempt >= attempts - 1:
                 break
-            time.sleep(max(0.0, retry_seconds))
+            delay = retry_seconds * (2 ** attempt) + random.uniform(0, jitter_seconds)
+            delay = min(delay, retry_seconds * 10)
+            time.sleep(max(0.0, delay))
     assert last_error is not None
     raise last_error
 
@@ -367,6 +436,20 @@ def save_progress(
     )
     path.write_text(json.dumps(updated.__dict__, ensure_ascii=False, indent=2), encoding="utf-8")
     return updated
+
+
+def _record_failed_page(
+    failure_log_path: Path, offset: int, url: str, status_code: int, error_msg: str
+) -> None:
+    record = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "offset": offset,
+        "url": url,
+        "status_code": status_code,
+        "error": error_msg,
+    }
+    with failure_log_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 if __name__ == "__main__":

@@ -88,7 +88,9 @@
 - [x] Run production pgvector migration on `jur_db`.
 - [x] Re-embed all production chunks with `bge-m3` (`document_chunks.embedding` null count is 0).
 - [x] Add structured Telegram/RAG timing logs.
-- [ ] Add Obsidian registry/aliases sync for exact legal-source routing.
+- [x] Add Obsidian registry/aliases sync for exact legal-source routing.
+- [x] Add and run Obsidian aliases backfill for existing synced notes.
+- [x] Deploy Obsidian workflow frontmatter parsing for aliases and legal-source metadata.
 
 ## Stage 7B: Knowledge Corpus Completion
 
@@ -120,8 +122,8 @@
 
 - [x] Add query router so contract-only questions use active document chunks, exact legal references use exact lookup, and general questions use hybrid search.
 - [ ] Connect package processing to document extraction, chunking, vector search, and agents.
-- [ ] Store generated answers in `legal_opinions`.
-- [ ] Add lawyer review/approval state for generated opinions.
+- [x] Store generated answers in `legal_opinions`.
+- [x] Add lawyer review/approval state for generated opinions.
 - [ ] Add official-source verification workflow for legislation and court practice.
 - [ ] Add controlled official-source web search stage for gaps and freshness checks only.
   - Restrict search to official domains such as `zakon.rada.gov.ua`, `court.gov.ua`, `supreme.court.gov.ua`, `kmu.gov.ua`, ministries, NERC, DBN/DSTU sources.
@@ -137,4 +139,9 @@
 - [ ] Add backup/restore instructions for `jur_db`.
 - [ ] Add CI workflow for tests and migration checks.
 - [x] Replace deterministic embeddings configuration with a production Ollama embedding provider.
+
+
+
+
+
 

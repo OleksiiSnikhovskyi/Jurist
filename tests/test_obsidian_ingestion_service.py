@@ -49,6 +49,7 @@ def test_parse_note_extracts_frontmatter_tags_and_links(vault_dir: Path) -> None
         """---
 title: Claim strategy
 tags: [civil, #contract]
+aliases: [Позов, claim note]
 ---
 # Claim
 See [[Evidence Note|evidence]] and [[Law/Article 625#Interest]].
@@ -63,6 +64,7 @@ Inline #urgent tag.
     assert note.title == "Claim strategy"
     assert note.tags == ["civil", "contract", "urgent"]
     assert note.links == ["Evidence Note", "Law/Article 625"]
+    assert note.aliases == ["Позов", "claim note"]
     assert "# Claim" in note.body
 
 
@@ -95,9 +97,11 @@ def test_chunk_note_preserves_obsidian_metadata(vault_dir: Path) -> None:
     assert chunks[0].metadata["source"] == "obsidian"
     assert chunks[0].metadata["workspace_id"] == "workspace-1"
     assert chunks[0].metadata["note_path"] == "Note.md"
+    assert "aliases" in chunks[0].metadata
 
 
 def test_extract_wiki_links_removes_aliases_and_headers() -> None:
     links = extract_wiki_links("[[A|alias]] [[B#Header]] [[Folder/C]] [[A]]")
 
     assert links == ["A", "B", "Folder/C"]
+

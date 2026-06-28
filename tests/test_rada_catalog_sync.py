@@ -1,7 +1,10 @@
 import gzip
+import logging
 import shutil
 from collections.abc import Generator
 from pathlib import Path
+from unittest.mock import patch
+from urllib.error import HTTPError
 from uuid import uuid4
 
 import pytest
@@ -12,6 +15,7 @@ from scripts.rada_catalog_sync import (
     download_manifest_documents,
     main,
     parse_rada_arrivals_html,
+    read_input,
 )
 
 
@@ -148,3 +152,88 @@ def test_rada_sync_cli_does_not_fail_non_strict_on_partial_issues(
     manifest = output_path.read_text(encoding="utf-8")
     assert "4777-IX" in manifest
     assert "no-number" not in manifest
+
+
+def test_read_input_accepts_user_agent_and_timeout() -> None:
+    def mock_urlopen(request, timeout=None):
+        class MockResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def read(self):
+                return b"<html></html>"
+
+            @property
+            def headers(self):
+                return {}
+
+        assert request.headers["User-Agent"] == "CustomBot/1.0"
+        assert timeout == 60.0
+        return MockResponse()
+
+    with patch("scripts.rada_catalog_sync.urlopen", side_effect=mock_urlopen):
+        result = read_input(
+            "https://example.com",
+            user_agent="CustomBot/1.0",
+            timeout=60.0,
+        )
+
+    assert result == "<html></html>"
+
+
+def test_read_input_logs_http_errors(caplog) -> None:
+    http_error = HTTPError(
+        "https://example.com/page1844/",
+        403,
+        "Forbidden",
+        {},
+        None,
+    )
+
+    def mock_urlopen(request, timeout=None):
+        raise http_error
+
+    with patch("scripts.rada_catalog_sync.urlopen", side_effect=mock_urlopen):
+        with pytest.raises(HTTPError):
+            with caplog.at_level(logging.ERROR):
+                read_input("https://example.com/page1844/")
+
+    assert "HTTP 403" in caplog.text
+    assert "example.com/page1844" in caplog.text
+
+
+def test_read_input_has_browser_like_headers() -> None:
+    captured_headers = {}
+
+    def mock_urlopen(request, timeout=None):
+        captured_headers.update(request.headers)
+
+        class MockResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def read(self):
+                return b"<html></html>"
+
+            @property
+            def headers(self):
+                return {}
+
+        return MockResponse()
+
+    with patch("scripts.rada_catalog_sync.urlopen", side_effect=mock_urlopen):
+        read_input("https://example.com")
+
+    assert "Accept" in captured_headers
+    assert "text/html" in captured_headers["Accept"]
+    assert "Accept-Language" in captured_headers
+    assert "uk-UA" in captured_headers["Accept-Language"]
+    assert "Referer" in captured_headers
+    assert "zakon.rada.gov.ua" in captured_headers["Referer"]
+    assert "Connection" in captured_headers

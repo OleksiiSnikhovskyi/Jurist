@@ -15,6 +15,7 @@ from app.services.vector_search_service import (
     VectorSearchService,
     cosine_similarity,
     extract_legal_reference_terms,
+    extract_known_alias_terms,
 )
 
 
@@ -188,3 +189,7 @@ def test_extract_legal_reference_terms_finds_dbn_and_law_numbers() -> None:
         "ДБН А.2.2-14:2016",
         "435-IV",
     ]
+
+
+def test_extract_known_alias_terms_finds_legal_short_names() -> None:
+    assert extract_known_alias_terms("Перевір ЦКУ та КЗпП для договору.") == ["ЦКУ", "КЗПП"]

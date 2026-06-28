@@ -11,6 +11,7 @@ def test_expected_tables_are_registered() -> None:
         "lawyer_profiles",
         "documents",
         "legal_sources",
+        "legal_source_aliases",
         "document_chunks",
         "legal_opinions",
         "audit_logs",
@@ -18,3 +19,4 @@ def test_expected_tables_are_registered() -> None:
         "n8n_intake_items",
         "n8n_telegram_bindings",
     }.issubset(Base.metadata.tables.keys())
+

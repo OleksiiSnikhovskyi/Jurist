@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.client_profile import ClientProfile
 from app.models.document import Document
 from app.models.lawyer_profile import LawyerProfile
+from app.models.legal_opinion import LegalOpinion
 from app.models.legal_source import LegalSource
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
 from app.repositories.document_repository import DocumentRepository
@@ -32,6 +33,7 @@ from app.services.access_control import AccessControlService, WorkspacePermissio
 from app.services.agent_context_service import AgentContextService
 from app.services.audit_log_service import AuditLogCommand, AuditLogService
 from app.services.chunking import split_text
+from app.services.legal_source_alias_service import LegalSourceAliasService
 from app.services.ollama_service import (
     LegalPackageAnalysisCommand,
     OllamaLegalAnalysisService,
@@ -608,6 +610,14 @@ class N8nIntegrationService:
             "source_fragment_count": len(command.source_fragments),
         }
         package.metadata_json = metadata
+        opinion = self._store_legal_opinion_for_package(
+            package=package,
+            command=command,
+            answer=answer,
+            model=result.model,
+            timings=metadata["processing_timings"],
+        )
+        package.metadata_json = {**metadata, "legal_opinion_id": opinion.id}
         self._log_package_processing_event(
             event="processed",
             package=package,
@@ -617,6 +627,51 @@ class N8nIntegrationService:
             model=result.model,
         )
         return answer
+
+    def _store_legal_opinion_for_package(
+        self,
+        *,
+        package: N8nIntakePackage,
+        command: LegalPackageAnalysisCommand,
+        answer: str,
+        model: str,
+        timings: dict[str, float | int | str],
+    ) -> LegalOpinion:
+        metadata = dict(package.metadata_json or {})
+        source_document_id = metadata.get("last_extracted_document_id")
+        sources_used = {
+            "package_id": package.id,
+            "requested_agent": package.requested_agent,
+            "response_mode": command.response_mode,
+            "query_route": timings.get("query_route"),
+            "llm_model": model,
+            "client_profile_id": metadata.get("client_profile_id"),
+            "source_fragments": [
+                {
+                    "document_id": fragment.document_id,
+                    "chunk_index": fragment.chunk_index,
+                    "score": fragment.score,
+                    "text_preview": fragment.text[:500],
+                }
+                for fragment in command.source_fragments
+            ],
+            "attachment_notes": command.attachment_notes,
+        }
+        opinion = LegalOpinion(
+            workspace_id=package.workspace_id,
+            user_id=package.user_id,
+            source_document_id=source_document_id,
+            question=command.question,
+            answer=answer,
+            risk_level=None,
+            sources_used=sources_used,
+            confidence_score=None,
+            review_status="draft",
+        )
+        self.db.add(opinion)
+        self.db.flush()
+        return opinion
+
 
     def _log_package_processing_event(
         self,
@@ -1215,6 +1270,13 @@ class N8nIntegrationService:
             workspace_id=request.workspace_id,
             chunks=chunks,
         )
+        aliases = LegalSourceAliasService(self.db).sync_obsidian_document_aliases(
+            workspace_id=request.workspace_id,
+            document_id=document.id,
+            title=request.title,
+            note_path=request.note_path,
+            frontmatter=request.frontmatter,
+        )
         self.audit_log_service.record(
             AuditLogCommand(
                 action="n8n.obsidian_note_synced",
@@ -1227,6 +1289,7 @@ class N8nIntegrationService:
                     "sync_mode": request.sync_mode,
                     "tag_count": len(request.tags),
                     "link_count": len(request.links),
+                    "alias_count": len(aliases),
                     "chunk_count": len(persisted_chunks),
                 },
             ),
@@ -2092,5 +2155,10 @@ class N8nIntegrationService:
             attachments=attachments,
             text_messages=text_messages,
         )
+
+
+
+
+
 
 
