@@ -156,6 +156,15 @@ class PackageItemCounts:
     text_messages: int
 
 
+@dataclass(frozen=True)
+class PackageMaterialLine:
+    number: int
+    item_id: str
+    item_type: str
+    label: str
+    details: str
+
+
 class N8nIntegrationService:
     def __init__(
         self,
@@ -202,6 +211,7 @@ class N8nIntegrationService:
             return batch_menu_response
 
         batch_mode = self._telegram_intake_mode(event) == "batch"
+        event = self._event_with_batch_text_action(event, batch_mode=batch_mode)
         package = self._get_or_create_pending_package(event)
         reply_menu = "batch" if batch_mode else "main"
 
@@ -210,11 +220,21 @@ class N8nIntegrationService:
             reply_text = "Поточний пакет очищено. Можна додати нові матеріали."
             reply_menu = "batch"
         elif event.action == "list_materials":
+            reply_text = self._format_package_materials(package.id)
+            reply_menu = "batch"
+        elif event.action == "remove_material":
+            reply_text = self._handle_remove_material(package, event)
+            reply_menu = "batch"
+        elif event.action == "processing_status":
             counts = self._count_items(package.id)
             reply_text = (
-                f"У пакеті матеріалів: {counts.total}. "
-                f"Файлів/медіа: {counts.attachments}, текстових повідомлень: {counts.text_messages}."
+                f"Статус пакета: {package.status}. Матеріалів: {counts.total}. "
+                "Якщо все готово, натисніть 'Почати обробку'."
             )
+            reply_menu = "batch"
+        elif event.action == "cancel_processing":
+            package.status = "cancelled"
+            reply_text = "Пакет скасовано. Для нового комплекту відкрийте 'Пакетна обробка'."
             reply_menu = "batch"
         elif event.action == "start_processing":
             package.status = "queued"
@@ -1737,7 +1757,8 @@ class N8nIntegrationService:
             reply_menu="batch",
             reply_text=(
                 "Пакетна обробка увімкнена. Додайте всі фото, документи або голосові повідомлення, "
-                "а потім натисніть 'Почати обробку'."
+                "перевірте склад через 'Показати додані матеріали', а потім натисніть "
+                "'Почати обробку'. Щоб прибрати один матеріал, напишіть: Видалити матеріал 2."
             ),
         )
 
@@ -1747,6 +1768,27 @@ class N8nIntegrationService:
             return None
         metadata = dict(binding.metadata_json or {})
         return metadata.get("intake_mode")
+
+    def _event_with_batch_text_action(
+        self,
+        event: TelegramIntakeEvent,
+        *,
+        batch_mode: bool,
+    ) -> TelegramIntakeEvent:
+        if not batch_mode or event.action != "free_text":
+            return event
+        text = (event.text or "").strip().lower()
+        if not text:
+            return event
+        if re.fullmatch(r"(показати|перелік|список)(\s+доданих)?\s+матеріал(и|ів)?", text):
+            return event.model_copy(update={"action": "list_materials"})
+        if re.fullmatch(r"(статус|стан)(\s+обробки|\s+пакета)?", text):
+            return event.model_copy(update={"action": "processing_status"})
+        if re.fullmatch(r"(скасувати|відмінити)(\s+обробку|\s+пакет)?", text):
+            return event.model_copy(update={"action": "cancel_processing"})
+        if re.match(r"^(видалити|прибрати)\s+(матеріал\s+)?[#№]?\d+\b", text):
+            return event.model_copy(update={"action": "remove_material"})
+        return event
 
     def _create_client_profile_from_draft(
         self,
@@ -2127,7 +2169,7 @@ class N8nIntegrationService:
             )
             added_count += 1
 
-        for attachment in event.attachments:
+        for attachment_index, attachment in enumerate(event.attachments, start=1):
             self.db.add(
                 N8nIntakeItem(
                     package_id=package.id,
@@ -2139,12 +2181,136 @@ class N8nIntegrationService:
                         "message_id": event.message_id,
                         "file_size": attachment.file_size,
                         "duration": attachment.duration,
+                        "attachment_index": attachment_index,
                     },
                 )
             )
             added_count += 1
 
         return added_count
+
+    def _handle_remove_material(
+        self,
+        package: N8nIntakePackage,
+        event: TelegramIntakeEvent,
+    ) -> str:
+        selection = self._material_selection_from_text(event.text or "")
+        if selection is None:
+            return (
+                "Напишіть номер матеріалу, який потрібно видалити. Наприклад: "
+                "Видалити матеріал 2.\n\n"
+                f"{self._format_package_materials(package.id)}"
+            )
+        material = self._find_package_material_by_selection(package.id, selection)
+        if material is None:
+            return (
+                f"Не знайшов матеріал з номером {selection}. "
+                f"{self._format_package_materials(package.id)}"
+            )
+        item = self.db.get(N8nIntakeItem, material.item_id)
+        if item is None or item.package_id != package.id:
+            return "Матеріал уже недоступний у поточному пакеті."
+        self.db.delete(item)
+        self.db.flush()
+        counts = self._count_items(package.id)
+        if counts.total == 0:
+            return "Матеріал видалено. Пакет порожній, можна додати нові файли або текст."
+        return (
+            f"Матеріал {material.number} видалено: {material.label}. "
+            f"Залишилось матеріалів: {counts.total}.\n\n"
+            f"{self._format_package_materials(package.id)}"
+        )
+
+    def _material_selection_from_text(self, text: str) -> int | None:
+        match = re.search(r"(?:матеріал\s*)?[#№]?\s*(\d{1,3})\b", text.strip().lower())
+        if not match:
+            return None
+        value = int(match.group(1))
+        return value if value > 0 else None
+
+    def _find_package_material_by_selection(
+        self,
+        package_id: str,
+        selection: int,
+    ) -> PackageMaterialLine | None:
+        for material in self._list_package_materials(package_id):
+            if material.number == selection:
+                return material
+        return None
+
+    def _format_package_materials(self, package_id: str) -> str:
+        materials = self._list_package_materials(package_id)
+        if not materials:
+            return (
+                "Пакет порожній. Додайте фото, документ, голосове повідомлення або текст, "
+                "після чого натисніть 'Почати обробку'."
+            )
+        counts = self._count_items(package_id)
+        lines = [
+            (
+                f"У пакеті матеріалів: {counts.total}. "
+                f"Файлів/медіа: {counts.attachments}, текстових повідомлень: {counts.text_messages}."
+            ),
+            "",
+        ]
+        lines.extend(
+            f"{material.number}. {material.label}{material.details}"
+            for material in materials
+        )
+        lines.extend(
+            [
+                "",
+                "Щоб видалити один матеріал, напишіть: Видалити матеріал 2.",
+            ]
+        )
+        return "\n".join(lines)
+
+    def _list_package_materials(self, package_id: str) -> list[PackageMaterialLine]:
+        items = (
+            self.db.query(N8nIntakeItem)
+            .filter(N8nIntakeItem.package_id == package_id)
+            .order_by(N8nIntakeItem.created_at.asc(), N8nIntakeItem.id.asc())
+            .all()
+        )
+        items.sort(key=self._package_material_sort_key)
+        return [
+            PackageMaterialLine(
+                number=index,
+                item_id=item.id,
+                item_type=item.item_type,
+                label=self._material_label(item),
+                details=self._material_details(item),
+            )
+            for index, item in enumerate(items, start=1)
+        ]
+
+    def _package_material_sort_key(self, item: N8nIntakeItem) -> tuple:
+        metadata = item.metadata_json or {}
+        message_id = metadata.get("message_id") or 0
+        attachment_index = metadata.get("attachment_index") or 0
+        return (item.created_at, message_id, attachment_index, item.id)
+
+    def _material_label(self, item: N8nIntakeItem) -> str:
+        if item.item_type == "text":
+            preview = (item.text or "").strip().replace("\n", " ")
+            return f"Текст: {preview[:80] or 'без тексту'}"
+        if item.item_type == "voice":
+            return item.file_name or "Голосове повідомлення"
+        if item.item_type == "photo":
+            return item.file_name or "Фото документа"
+        return item.file_name or f"Документ {item.external_file_id or item.id}"
+
+    def _material_details(self, item: N8nIntakeItem) -> str:
+        details: list[str] = []
+        if item.item_type != "text":
+            details.append(item.item_type)
+        if item.mime_type:
+            details.append(item.mime_type)
+        if item.text and item.item_type != "text":
+            details.append("текст витягнуто")
+        elif item.item_type != "text":
+            details.append("очікує розпізнавання")
+        return f" ({', '.join(details)})" if details else ""
 
     def _count_items(self, package_id: str) -> PackageItemCounts:
         items = self.db.query(N8nIntakeItem).filter(N8nIntakeItem.package_id == package_id).all()

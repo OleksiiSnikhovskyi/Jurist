@@ -571,6 +571,100 @@ def test_telegram_delete_active_client_profile_clears_selection(
     assert "active_client_profile_id" not in binding.metadata_json
 
 
+
+def test_telegram_batch_materials_are_listed_with_numbers(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session, metadata={"intake_mode": "batch"})
+
+    response = client.post(
+        "/n8n/intake/telegram",
+        json={
+            "chat_id": "100",
+            "telegram_user_id": "200",
+            "text": "Потрібно проаналізувати комплект",
+            "action": "add_material",
+            "attachments": [
+                {
+                    "type": "document",
+                    "file_id": "telegram-file-1",
+                    "file_name": "contract.docx",
+                    "mime_type": (
+                        "application/vnd.openxmlformats-officedocument."
+                        "wordprocessingml.document"
+                    ),
+                },
+                {
+                    "type": "photo",
+                    "file_id": "telegram-photo-1",
+                    "file_size": 12345,
+                },
+            ],
+            "has_attachments": True,
+        },
+    )
+    assert response.status_code == 200
+
+    payload = _post_telegram_text(client, "Показати додані матеріали", "list_materials")
+
+    assert payload["reply_menu"] == "batch"
+    assert "У пакеті матеріалів: 2" in payload["reply_text"]
+    assert "1. contract.docx" in payload["reply_text"]
+    assert "2. Фото документа" in payload["reply_text"]
+    assert "Видалити матеріал 2" in payload["reply_text"]
+
+
+def test_telegram_batch_material_can_be_removed_by_number(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    _seed_telegram_binding(db_session, metadata={"intake_mode": "batch"})
+
+    db_session.add(
+        N8nIntakePackage(
+            id="package-1",
+            workspace_id="workspace-1",
+            user_id="user-1",
+            channel="telegram",
+            external_chat_id="100",
+            external_user_id="200",
+            status="pending",
+        )
+    )
+    db_session.add_all(
+        [
+            N8nIntakeItem(
+                id="item-1",
+                package_id="package-1",
+                item_type="document",
+                external_file_id="telegram-file-1",
+                file_name="contract.docx",
+            ),
+            N8nIntakeItem(
+                id="item-2",
+                package_id="package-1",
+                item_type="voice",
+                external_file_id="telegram-voice-1",
+                file_name="voice.oga",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    payload = _post_telegram_text(client, "Видалити матеріал 2")
+
+    assert payload["reply_menu"] == "batch"
+    assert "Матеріал 2 видалено" in payload["reply_text"]
+    assert "voice.oga" in payload["reply_text"]
+    assert "1. contract.docx" in payload["reply_text"]
+    assert db_session.query(N8nIntakeItem).count() == 1
+    assert db_session.query(N8nIntakeItem).one().file_name == "contract.docx"
+
 def test_inactive_telegram_binding_is_ignored(
     client: TestClient,
     db_session: Session,
@@ -1552,8 +1646,3 @@ def test_obsidian_sync_note_creates_document_and_chunks(
         "дбн а.2.2-14:2016",
     }
     assert all(alias.workspace_id == "workspace-1" for alias in aliases)
-
-
-
-
-

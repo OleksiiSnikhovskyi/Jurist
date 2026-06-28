@@ -125,7 +125,7 @@ if (!findNode("Telegram Batch Menu Reply")) {
     },
     {
       row: {
-        buttons: [{ text: "Статус обробки" }, { text: "Очистити пакет" }],
+        buttons: [{ text: "Статус обробки" }, { text: "Видалити матеріал" }, { text: "Очистити пакет" }],
       },
     },
     {
