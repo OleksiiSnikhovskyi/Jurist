@@ -7,9 +7,11 @@ an optional shared token when JUR_RADA_FETCH_RELAY_TOKEN is configured.
 
 from __future__ import annotations
 
+import gzip
 import os
 import sys
 import time
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
@@ -34,6 +36,33 @@ TIMEOUT_SECONDS = _env_int("JUR_RADA_FETCH_RELAY_TIMEOUT_SECONDS", 60)
 SLEEP_SECONDS = float(os.environ.get("JUR_RADA_FETCH_RELAY_SLEEP_SECONDS", "1.5"))
 TOKEN = os.environ.get("JUR_RADA_FETCH_RELAY_TOKEN", "").strip()
 USER_AGENT = os.environ.get("JUR_RADA_FETCH_RELAY_USER_AGENT", DEFAULT_USER_AGENT)
+
+
+def _decode_upstream_body(body: bytes, encoding: str | None) -> bytes:
+    normalized = (encoding or "").lower().strip()
+    if not normalized:
+        if body.startswith(b"\x1f\x8b"):
+            return gzip.decompress(body)
+        return body
+    if "gzip" in normalized:
+        return gzip.decompress(body)
+    if "deflate" in normalized:
+        try:
+            return zlib.decompress(body)
+        except zlib.error:
+            return zlib.decompress(body, -zlib.MAX_WBITS)
+    return body
+
+
+def _send_upstream_response(handler: BaseHTTPRequestHandler, status: int, headers, body: bytes) -> None:
+    decoded_body = _decode_upstream_body(body, headers.get("Content-Encoding"))
+    content_type = headers.get("Content-Type") or "text/html; charset=windows-1251"
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(decoded_body)))
+    handler.send_header("X-JUR-Relay-Upstream-Status", str(status))
+    handler.end_headers()
+    handler.wfile.write(decoded_body)
 
 
 class RadaFetchRelay(BaseHTTPRequestHandler):
@@ -64,6 +93,7 @@ class RadaFetchRelay(BaseHTTPRequestHandler):
                 "User-Agent": USER_AGENT,
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.5",
+                "Accept-Encoding": "identity",
                 "Referer": "https://zakon.rada.gov.ua/laws/main",
             },
         )
@@ -71,20 +101,11 @@ class RadaFetchRelay(BaseHTTPRequestHandler):
         try:
             with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
                 body = response.read()
-                content_type = response.headers.get("Content-Type") or "text/html; charset=windows-1251"
-                self.send_response(response.status)
-                self.send_header("Content-Type", content_type)
-                self.send_header("X-JUR-Relay-Upstream-Status", str(response.status))
-                self.send_header("X-JUR-Relay-Elapsed-Ms", str(int((time.monotonic() - started) * 1000)))
-                self.end_headers()
-                self.wfile.write(body)
+                _send_upstream_response(self, response.status, response.headers, body)
+                self.log_message("upstream=%s elapsed_ms=%s url=%s", response.status, int((time.monotonic() - started) * 1000), target)
         except HTTPError as error:
             body = error.read()
-            self.send_response(error.code)
-            self.send_header("Content-Type", error.headers.get("Content-Type") or "text/html; charset=windows-1251")
-            self.send_header("X-JUR-Relay-Upstream-Status", str(error.code))
-            self.end_headers()
-            self.wfile.write(body)
+            _send_upstream_response(self, error.code, error.headers, body)
         except URLError as error:
             self._send_text(502, f"upstream error: {error}\n")
         finally:
