@@ -237,3 +237,37 @@ def test_read_input_has_browser_like_headers() -> None:
     assert "Referer" in captured_headers
     assert "zakon.rada.gov.ua" in captured_headers["Referer"]
     assert "Connection" in captured_headers
+
+
+def test_read_input_routes_rada_urls_through_relay(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = {}
+    monkeypatch.setenv("JUR_RADA_FETCH_RELAY_URL", "http://100.100.209.24:8031/fetch")
+    monkeypatch.setenv("JUR_RADA_FETCH_RELAY_TOKEN", "secret-token")
+
+    def mock_urlopen(request, timeout=None):
+        captured["url"] = request.full_url
+        captured["headers"] = dict(request.headers)
+
+        class MockResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def read(self):
+                return b"<html></html>"
+
+            @property
+            def headers(self):
+                return {}
+
+        return MockResponse()
+
+    with patch("scripts.rada_catalog_sync.urlopen", side_effect=mock_urlopen):
+        result = read_input("https://zakon.rada.gov.ua/laws/show/503/2026")
+
+    assert result == "<html></html>"
+    assert captured["url"].startswith("http://100.100.209.24:8031/fetch?url=")
+    assert "https%3A%2F%2Fzakon.rada.gov.ua%2Flaws%2Fshow%2F503%2F2026" in captured["url"]
+    assert captured["headers"]["X-jur-rada-fetch-token"] == "secret-token"

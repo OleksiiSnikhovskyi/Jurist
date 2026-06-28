@@ -5,6 +5,7 @@ import csv
 import gzip
 import json
 import logging
+import os
 import re
 import sys
 from datetime import UTC, datetime
@@ -12,7 +13,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -141,15 +142,18 @@ def read_input(
 ) -> str:
     parsed = urlparse(value)
     if parsed.scheme in {"http", "https"}:
+        fetch_url = _relay_url_for(value) or value
         headers = {
             "User-Agent": user_agent,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br, identity",
+            "Accept-Encoding": "gzip, deflate, identity",
             "Referer": "https://zakon.rada.gov.ua/laws/main",
             "Connection": "keep-alive",
         }
-        request = Request(value, headers=headers)
+        if fetch_url != value:
+            headers["X-JUR-RADA-FETCH-TOKEN"] = os.getenv("JUR_RADA_FETCH_RELAY_TOKEN", "")
+        request = Request(fetch_url, headers=headers)
         request.headers.update(headers)
         try:
             with urlopen(request, timeout=timeout) as response:
@@ -161,9 +165,20 @@ def read_input(
                 body_excerpt = f" | body_excerpt={body!r}"
             except Exception:
                 pass
-            logger.error(f"HTTP {exc.code} fetching {value}{body_excerpt}")
+            logger.error(f"HTTP {exc.code} fetching {value} via {fetch_url}{body_excerpt}")
             raise
     return Path(value).read_text(encoding="utf-8", errors="ignore")
+
+
+def _relay_url_for(value: str) -> str | None:
+    relay_url = os.getenv("JUR_RADA_FETCH_RELAY_URL", "").strip()
+    if not relay_url:
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or parsed.hostname != "zakon.rada.gov.ua":
+        return None
+    separator = "&" if "?" in relay_url else "?"
+    return f"{relay_url}{separator}url={quote(value, safe='')}"
 
 
 def _decode_response_body(raw: bytes, content_encoding: str | None) -> str:
