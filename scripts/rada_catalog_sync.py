@@ -291,6 +291,9 @@ def _item_to_manifest_row(item: dict[str, Any], *, checked_at: str) -> dict[str,
     document_number = _extract_document_number(details)
     source_type = _extract_source_type(details, source_name)
     validity_status = _extract_validity_status(details)
+    effective_date = _extract_effective_date(details)
+    revision_date = _extract_revision_date(details)
+    validity_note = _extract_validity_note(details)
     document_code = _extract_document_code(source_url, details)
 
     return {
@@ -301,8 +304,10 @@ def _item_to_manifest_row(item: dict[str, Any], *, checked_at: str) -> dict[str,
         "jurisdiction": "Ukraine",
         "document_number": document_number,
         "adoption_date": adoption_date,
-        "effective_date": "",
+        "effective_date": effective_date,
+        "revision_date": revision_date,
         "validity_status": validity_status,
+        "validity_note": validity_note,
         "last_checked_at": checked_at,
         "topic_tags": _tags_for_source_type(source_type),
         "summary": details,
@@ -341,6 +346,48 @@ def _extract_validity_status(text: str) -> str:
     if "Чинний" in text:
         return "current"
     return "needs_verification"
+
+
+def _date_match_to_iso(match: re.Match[str]) -> str:
+    day, month, year = match.groups()
+    return f"{year}-{month}-{day}"
+
+
+def _extract_effective_date(text: str) -> str:
+    patterns = [
+        r"(?:Набирає чинності|набирає чинності|Вводиться в дію|вводиться в дію|Чинний з|чинний з)\s+(?:з\s+)?(\d{2})\.(\d{2})\.(\d{4})",
+        r"(?:набрання чинності|введення в дію)[^\d]{0,80}(\d{2})\.(\d{2})\.(\d{4})",
+    ]
+    for pattern in patterns:
+        if match := re.search(pattern, text):
+            return _date_match_to_iso(match)
+    return ""
+
+
+def _extract_revision_date(text: str) -> str:
+    patterns = [
+        r"(?:Редакція від|редакція від)\s+(\d{2})\.(\d{2})\.(\d{4})",
+        r"(?:станом на|Станом на)\s+(\d{2})\.(\d{2})\.(\d{4})",
+    ]
+    for pattern in patterns:
+        if match := re.search(pattern, text):
+            return _date_match_to_iso(match)
+    return ""
+
+
+def _extract_validity_note(text: str) -> str:
+    patterns = [
+        r"(Набирає чинності[^.;,\n]*(?:\d{2}\.\d{2}\.\d{4})?)",
+        r"(Вводиться в дію[^.;,\n]*(?:\d{2}\.\d{2}\.\d{4})?)",
+        r"(Редакція від\s+\d{2}\.\d{2}\.\d{4})",
+        r"(Чинний[^.;,\n]*)",
+        r"(Втратив чинність[^.;,\n]*)",
+        r"(Не чинний[^.;,\n]*)",
+    ]
+    for pattern in patterns:
+        if match := re.search(pattern, text):
+            return _squash(match.group(1))
+    return ""
 
 
 def _extract_document_code(source_url: str, details: str) -> str:

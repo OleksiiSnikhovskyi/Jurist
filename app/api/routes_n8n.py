@@ -12,6 +12,8 @@ from app.schemas.n8n_schema import (
     N8nObsidianNoteResponse,
     N8nProcessPackageRequest,
     N8nProcessPackageResponse,
+    N8nReembedMissingChunksRequest,
+    N8nReembedMissingChunksResponse,
     N8nTelegramBindingRequest,
     N8nTelegramBindingResponse,
     TelegramIntakeEvent,
@@ -98,3 +100,14 @@ def upsert_legal_source(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except AccessDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/maintenance/reembed-missing-chunks", response_model=N8nReembedMissingChunksResponse)
+def reembed_missing_chunks(
+    request: N8nReembedMissingChunksRequest,
+    db: Session = Depends(get_db),
+) -> N8nReembedMissingChunksResponse:
+    try:
+        return N8nIntegrationService(db).reembed_missing_chunks(request)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc

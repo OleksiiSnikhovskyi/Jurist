@@ -6,10 +6,11 @@ from datetime import UTC, date, datetime
 from time import perf_counter
 from urllib.parse import urlparse
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.client_profile import ClientProfile
-from app.models.document import Document
+from app.models.document import Document, DocumentChunk
 from app.models.lawyer_profile import LawyerProfile
 from app.models.legal_opinion import LegalOpinion
 from app.models.legal_source import LegalSource
@@ -26,14 +27,18 @@ from app.schemas.n8n_schema import (
     N8nObsidianNoteResponse,
     N8nProcessPackageRequest,
     N8nProcessPackageResponse,
+    N8nReembedMissingChunksRequest,
+    N8nReembedMissingChunksResponse,
     N8nTelegramBindingRequest,
     N8nTelegramBindingResponse,
     TelegramIntakeEvent,
 )
+from app.config import get_settings
 from app.services.access_control import AccessControlService, WorkspacePermission
 from app.services.agent_context_service import AgentContextService
 from app.services.audit_log_service import AuditLogCommand, AuditLogService
 from app.services.chunking import split_text
+from app.services.embedding_service import get_embedding_provider, serialize_embedding
 from app.services.legal_source_alias_service import LegalSourceAliasService
 from app.services.ollama_service import (
     LegalPackageAnalysisCommand,
@@ -1369,7 +1374,9 @@ class N8nIntegrationService:
         legal_source.document_number = request.document_number
         legal_source.adoption_date = self._parse_optional_date(request.adoption_date)
         legal_source.effective_date = self._parse_optional_date(request.effective_date)
+        legal_source.revision_date = self._parse_optional_date(request.revision_date)
         legal_source.validity_status = request.validity_status
+        legal_source.validity_note = request.validity_note
         legal_source.last_checked_at = request.last_checked_at or datetime.now(UTC)
         legal_source.topic_tags = request.topic_tags
         legal_source.summary = request.summary
@@ -1426,6 +1433,9 @@ class N8nIntegrationService:
                     "document_id": document.id,
                     "chunk_count": len(persisted_chunks),
                     "tag_count": len(request.topic_tags),
+                    "validity_status": request.validity_status,
+                    "effective_date": request.effective_date,
+                    "revision_date": request.revision_date,
                 },
             ),
             commit=False,
@@ -1438,6 +1448,88 @@ class N8nIntegrationService:
             chunk_count=len(persisted_chunks),
             message="Legal source synced.",
         )
+
+    def reembed_missing_chunks(
+        self,
+        request: N8nReembedMissingChunksRequest,
+    ) -> N8nReembedMissingChunksResponse:
+        batch_size = max(1, min(request.batch_size, 64))
+        limit = max(0, request.limit)
+        settings = get_settings()
+        provider = get_embedding_provider(settings)
+        dialect_name = self.db.get_bind().dialect.name
+        processed = 0
+
+        while limit == 0 or processed < limit:
+            remaining = batch_size if limit == 0 else min(batch_size, limit - processed)
+            chunks = self._fetch_null_embedding_chunks(dialect_name=dialect_name, limit=remaining)
+            if not chunks:
+                break
+            embeddings = provider.embed_batch([chunk["chunk_text"] for chunk in chunks])
+            if any(len(embedding) != settings.embedding_dimensions for embedding in embeddings):
+                raise RuntimeError("Embedding provider returned an unexpected vector size")
+            for chunk, embedding in zip(chunks, embeddings, strict=True):
+                self._persist_chunk_embedding(
+                    dialect_name=dialect_name,
+                    chunk_id=chunk["id"],
+                    embedding=serialize_embedding(embedding),
+                )
+            self.db.commit()
+            processed += len(chunks)
+            if len(chunks) < remaining:
+                break
+
+        remaining_null_embeddings = self._count_null_embeddings()
+        return N8nReembedMissingChunksResponse(
+            ok=True,
+            processed=processed,
+            remaining_null_embeddings=remaining_null_embeddings,
+            embedding_provider=settings.embedding_provider,
+            embedding_model=settings.embedding_model,
+            embedding_dimensions=settings.embedding_dimensions,
+            message="Missing chunk embeddings refreshed.",
+        )
+
+    def _fetch_null_embedding_chunks(self, *, dialect_name: str, limit: int) -> list[dict[str, str]]:
+        if dialect_name == "postgresql":
+            rows = self.db.execute(
+                text(
+                    """
+                    SELECT id::text AS id, chunk_text
+                    FROM document_chunks
+                    WHERE embedding IS NULL
+                      AND length(trim(chunk_text)) > 0
+                    ORDER BY created_at ASC, chunk_index ASC
+                    LIMIT :limit
+                    """
+                ),
+                {"limit": limit},
+            ).mappings()
+            return [{"id": str(row["id"]), "chunk_text": str(row["chunk_text"])} for row in rows]
+
+        rows = (
+            self.db.query(DocumentChunk)
+            .filter(DocumentChunk.embedding.is_(None), DocumentChunk.chunk_text != "")
+            .order_by(DocumentChunk.created_at.asc(), DocumentChunk.chunk_index.asc())
+            .limit(limit)
+            .all()
+        )
+        return [{"id": str(row.id), "chunk_text": row.chunk_text} for row in rows]
+
+    def _persist_chunk_embedding(self, *, dialect_name: str, chunk_id: str, embedding: str) -> None:
+        if dialect_name == "postgresql":
+            self.db.execute(
+                text("UPDATE document_chunks SET embedding = CAST(:embedding AS vector) WHERE id = :chunk_id"),
+                {"embedding": embedding, "chunk_id": chunk_id},
+            )
+            return
+        chunk = self.db.get(DocumentChunk, chunk_id)
+        if chunk is not None:
+            chunk.embedding = embedding
+            self.db.add(chunk)
+
+    def _count_null_embeddings(self) -> int:
+        return int(self.db.query(DocumentChunk).filter(DocumentChunk.embedding.is_(None)).count())
 
     def _parse_optional_date(self, value: str | None) -> date | None:
         if not value:

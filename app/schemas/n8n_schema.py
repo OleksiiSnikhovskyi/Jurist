@@ -137,7 +137,9 @@ class N8nLegalSourceUpsertRequest(BaseModel):
     document_number: str | None = None
     adoption_date: str | None = None
     effective_date: str | None = None
+    revision_date: str | None = None
     validity_status: str = "current"
+    validity_note: str | None = None
     last_checked_at: datetime | None = None
     topic_tags: list[str] = Field(default_factory=list)
     summary: str | None = None
@@ -153,4 +155,19 @@ class N8nLegalSourceUpsertResponse(BaseModel):
     legal_source_id: str
     document_id: str
     chunk_count: int
+    message: str
+
+
+class N8nReembedMissingChunksRequest(BaseModel):
+    batch_size: int = 16
+    limit: int = 500
+
+
+class N8nReembedMissingChunksResponse(BaseModel):
+    ok: bool
+    processed: int
+    remaining_null_embeddings: int
+    embedding_provider: str
+    embedding_model: str
+    embedding_dimensions: int
     message: str

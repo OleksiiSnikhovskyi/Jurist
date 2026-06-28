@@ -26,7 +26,9 @@ OUTPUT_FIELDS = [
     "document_number",
     "adoption_date",
     "effective_date",
+    "revision_date",
     "validity_status",
+    "validity_note",
     "last_checked_at",
     "topic_tags",
     "summary",
@@ -89,6 +91,7 @@ def normalize_row(row: dict[str, Any], *, today: str) -> dict[str, Any]:
     source_type = clean(row.get("source_type") or infer_source_type(row))
     adoption_date = parse_date(row.get("adoption_date")) if row.get("adoption_date") else None
     effective_date = parse_date(row.get("effective_date")) if row.get("effective_date") else None
+    revision_date = parse_date(row.get("revision_date")) if row.get("revision_date") else None
     tags = parse_tags(row.get("topic_tags") or row.get("tags"))
 
     return {
@@ -100,7 +103,9 @@ def normalize_row(row: dict[str, Any], *, today: str) -> dict[str, Any]:
         "document_number": clean(row.get("document_number") or row.get("number")),
         "adoption_date": adoption_date.isoformat() if adoption_date else "",
         "effective_date": effective_date.isoformat() if effective_date else "",
+        "revision_date": revision_date.isoformat() if revision_date else "",
         "validity_status": clean(row.get("validity_status") or row.get("status")) or "current",
+        "validity_note": clean(row.get("validity_note") or row.get("effective_note") or row.get("status_note")),
         "last_checked_at": clean(row.get("last_checked_at") or row.get("checked_at")) or today,
         "topic_tags": "; ".join(tags),
         "summary": clean(row.get("summary")),

@@ -38,7 +38,7 @@ def test_parse_rada_arrivals_html_builds_manifest_rows() -> None:
             Про внесення зміни до статті 23 Закону України
           </a>
           Верховна Рада України; Закон від 11.02.2026 № 4782-IX
-          4782-IX, Набирає чинності, 5 кб
+          4782-IX, Набирає чинності з 01.01.2027, 5 кб
         </li>
         <li>
           <a href="/laws/show/282-2026-%D0%BF">
@@ -59,6 +59,8 @@ def test_parse_rada_arrivals_html_builds_manifest_rows() -> None:
     assert rows[0]["document_number"] == "4782-IX"
     assert rows[0]["adoption_date"] == "2026-02-11"
     assert rows[0]["validity_status"] == "pending_effective"
+    assert rows[0]["effective_date"] == "2027-01-01"
+    assert "Набирає чинності" in rows[0]["validity_note"]
     assert rows[0]["source_url"] == "https://zakon.rada.gov.ua/laws/show/4782-20"
     assert rows[1]["source_type"] == "cabinet_resolution"
     assert rows[1]["validity_status"] == "current"

@@ -1813,3 +1813,47 @@ def test_obsidian_sync_note_creates_document_and_chunks(
         "дбн а.2.2-14:2016",
     }
     assert all(alias.workspace_id == "workspace-1" for alias in aliases)
+
+
+def test_reembed_missing_chunks_endpoint_embeds_new_chunks(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_workspace(db_session)
+    db_session.add(
+        Document(
+            id="document-reembed",
+            workspace_id="workspace-1",
+            uploaded_by="user-1",
+            document_name="law.html",
+            document_type="legal_source_law",
+            extracted_text="текст закону",
+        )
+    )
+    db_session.add(
+        DocumentChunk(
+            id="chunk-reembed",
+            document_id="document-reembed",
+            workspace_id="workspace-1",
+            chunk_index=0,
+            chunk_text="текст закону про чинність",
+        )
+    )
+    db_session.commit()
+
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "deterministic")
+    monkeypatch.setenv("EMBEDDING_DIMENSIONS", "3")
+
+    response = client.post(
+        "/n8n/maintenance/reembed-missing-chunks",
+        json={"batch_size": 2, "limit": 10},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed"] == 1
+    assert payload["remaining_null_embeddings"] == 0
+    chunk = db_session.get(DocumentChunk, "chunk-reembed")
+    assert chunk is not None
+    assert chunk.embedding is not None

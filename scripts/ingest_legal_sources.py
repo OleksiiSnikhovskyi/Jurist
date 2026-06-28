@@ -43,7 +43,9 @@ class SourceManifestEntry:
     document_number: str | None = None
     adoption_date: date | None = None
     effective_date: date | None = None
+    revision_date: date | None = None
     validity_status: str | None = None
+    validity_note: str | None = None
     last_checked_at: datetime | None = None
     topic_tags: list[str] = field(default_factory=list)
     summary: str | None = None
@@ -192,7 +194,9 @@ def parse_manifest_entry(row: dict[str, Any]) -> SourceManifestEntry:
         document_number=_clean_optional(row.get("document_number") or row.get("number")),
         adoption_date=parse_date(row.get("adoption_date")),
         effective_date=parse_date(row.get("effective_date")),
+        revision_date=parse_date(row.get("revision_date")),
         validity_status=_clean_optional(row.get("validity_status") or row.get("status")),
+        validity_note=_clean_optional(row.get("validity_note") or row.get("effective_note") or row.get("status_note")),
         last_checked_at=parse_datetime(row.get("last_checked_at") or row.get("checked_at")),
         topic_tags=parse_tags(row.get("topic_tags") or row.get("tags")),
         summary=_clean_optional(row.get("summary")),
@@ -240,9 +244,11 @@ def upsert_legal_source(
     source.document_number = document_number
     source.adoption_date = entry.adoption_date if entry else None
     source.effective_date = entry.effective_date if entry else None
+    source.revision_date = entry.revision_date if entry else None
     source.validity_status = (
         entry.validity_status if entry and entry.validity_status else default_validity_status
     )
+    source.validity_note = entry.validity_note if entry else None
     source.last_checked_at = (
         entry.last_checked_at if entry and entry.last_checked_at else datetime.now(UTC)
     )

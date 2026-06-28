@@ -90,6 +90,11 @@ def test_rada_qwen_template_syncs_official_sources_through_api() -> None:
     assert "X-JUR-RADA-FETCH-TOKEN" in workflow_text
     assert "function validityStatus" in workflow_text
     assert "validity_status: validityStatus(details)" in workflow_text
+    assert "effective_date" in workflow_text
+    assert "revision_date" in workflow_text
+    assert "validity_note" in workflow_text
+    assert "Reembed Missing Chunks" in workflow_text
+    assert "/n8n/maintenance/reembed-missing-chunks" in workflow_text
     assert "validity_status: 'current'" not in workflow_text
     assert "new URL(" not in workflow_text
     assert "$helpers" not in workflow_text
