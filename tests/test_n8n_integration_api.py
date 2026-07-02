@@ -1694,6 +1694,72 @@ def test_attach_extracted_text_queues_auto_processing_without_blocking(
     assert package.metadata_json["analysis_requested_after_extraction"] is True
 
 
+
+def test_attach_extracted_text_can_auto_process_and_return_answer(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    package = N8nIntakePackage(
+        id="package-auto-process-extract",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        external_user_id="200",
+        status="waiting_for_text_extraction",
+        metadata_json={"auto_process_after_extraction": True},
+        requested_agent="contract_review",
+        question="Проаналізуй договір після OCR",
+    )
+    item = N8nIntakeItem(
+        id="item-auto-process-extract",
+        package_id="package-auto-process-extract",
+        item_type="document",
+        external_file_id="telegram-file-auto-process",
+        file_name="contract.pdf",
+    )
+    db_session.add(package)
+    db_session.add(item)
+    db_session.commit()
+    fake_llm = FakeLegalAnalysisService()
+
+    original_init = N8nIntegrationService.__init__
+
+    def init_with_fake_llm(self: N8nIntegrationService, *args, **kwargs) -> None:
+        kwargs["legal_analysis_service"] = fake_llm
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(N8nIntegrationService, "__init__", init_with_fake_llm)
+
+    response = client.post(
+        "/n8n/intake/extracted-text",
+        json={
+            "package_id": "package-auto-process-extract",
+            "external_file_id": "telegram-file-auto-process",
+            "extracted_text": "Текст договору поставки з ризиком штрафу.",
+            "extraction_method": "linguistproai.text_extract",
+            "auto_process": True,
+            "requested_agent": "contract_review",
+            "question": "Проаналізуй договір після OCR",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "processed"
+    assert payload["answer"] == "LLM відповідь для юриста."
+    assert payload["message"] == "Extracted text attached and analyzed."
+    assert fake_llm.command is not None
+    assert "ризиком штрафу" in fake_llm.command.package_text
+    db_session.refresh(package)
+    assert package.metadata_json["analysis_requested_after_extraction"] is True
+    assert package.metadata_json["legal_opinion_id"]
+    assert db_session.query(LegalOpinion).count() == 1
+
+
 def test_start_package_processing_uses_extracted_attachment_text(
     db_session: Session,
 ) -> None:

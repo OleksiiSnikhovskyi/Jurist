@@ -91,6 +91,9 @@ class N8nExtractedTextRequest(BaseModel):
     extraction_method: str = "external"
     document_type: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    auto_process: bool = False
+    requested_agent: str | None = None
+    question: str | None = None
     chunk_size: int = 1200
     overlap: int = 150
 

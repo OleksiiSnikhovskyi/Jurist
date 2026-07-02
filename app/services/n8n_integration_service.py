@@ -312,7 +312,6 @@ class N8nIntegrationService:
                     )
             else:
                 reply_text = "Команду отримано. Для комплекту документів відкрийте 'Пакетна обробка'."
-
         self.audit_log_service.record(
             AuditLogCommand(
                 action="n8n.telegram_intake",
@@ -510,6 +509,10 @@ class N8nIntegrationService:
             "last_extracted_document_id": document.id,
         }
         package.metadata_json = package_metadata
+        should_auto_process = bool(
+            request.auto_process and package_metadata.get("auto_process_after_extraction")
+        )
+        answer: str | None = None
         if package_metadata.get("auto_process_after_extraction"):
             package_metadata.pop("auto_process_after_extraction", None)
             package_metadata["analysis_requested_after_extraction"] = True
@@ -534,6 +537,19 @@ class N8nIntegrationService:
             ),
             commit=False,
         )
+        if should_auto_process:
+            self.access_control.require_permission(
+                workspace_id=workspace_id,
+                user_id=user_id,
+                permission=WorkspacePermission.RUN_AGENTS,
+            )
+            package.requested_agent = request.requested_agent or package.requested_agent or "orchestrator"
+            package.question = request.question or package.question or "Проаналізуй надісланий документ."
+            answer = self._try_process_package_with_llm(
+                package=package,
+                workspace_id=workspace_id,
+                user_id=user_id,
+            )
         self.db.commit()
         return N8nExtractedTextResponse(
             ok=True,
@@ -542,12 +558,16 @@ class N8nIntegrationService:
             document_id=document.id,
             chunk_count=len(persisted_chunks),
             message=(
-                "Extracted text attached and queued for analysis."
+                answer
+                if answer and package.status != "processed"
+                else "Extracted text attached and analyzed."
+                if package.status == "processed"
+                else "Extracted text attached and queued for analysis."
                 if package.status == "queued"
                 else "Extracted text attached and indexed."
             ),
             status=package.status,
-            answer=None,
+            answer=answer if package.status == "processed" else None,
         )
 
     def _try_process_package_with_llm(

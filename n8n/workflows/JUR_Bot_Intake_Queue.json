@@ -206,7 +206,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const intake = $input.first().json || {};\nconst event = $('Normalize Telegram Update').first().json || {};\nconst attachments = Array.isArray(event.attachments) ? event.attachments : [];\n\nif (!intake.ok || !intake.package_id || attachments.length === 0) {\n  return [];\n}\n\nreturn attachments\n  .filter((attachment) => attachment && attachment.file_id)\n  .map((attachment) => ({\n    json: {\n      package_id: intake.package_id,\n      chat_id: intake.chat_id || event.chat_id,\n      workspace_id: intake.workspace_id || event.workspace_id || null,\n      user_id: intake.user_id || event.user_id || null,\n      item_type: attachment.type,\n      external_file_id: attachment.file_id,\n      file_name: attachment.file_name || (attachment.type + '-' + attachment.file_id),\n      mime_type: attachment.mime_type || null,\n      file_size: attachment.file_size || null,\n      duration: attachment.duration || null,\n      extraction_requested_at: new Date().toISOString()\n    }\n  }));"
+        "jsCode": "const intake = $input.first().json || {};\nconst event = $('Normalize Telegram Update').first().json || {};\nconst attachments = Array.isArray(event.attachments) ? event.attachments : [];\n\nif (!intake.ok || !intake.package_id || attachments.length === 0) {\n  return [];\n}\n\nreturn attachments\n  .filter((attachment) => attachment && attachment.file_id)\n  .map((attachment) => ({\n    json: {\n      package_id: intake.package_id,\n      chat_id: intake.chat_id || event.chat_id,\n      workspace_id: intake.workspace_id || event.workspace_id || null,\n      user_id: intake.user_id || event.user_id || null,\n      item_type: attachment.type,\n      external_file_id: attachment.file_id,\n      file_name: attachment.file_name || (attachment.type + '-' + attachment.file_id),\n      mime_type: attachment.mime_type || null,\n      file_size: attachment.file_size || null,\n      duration: attachment.duration || null,\n      requested_agent: event.requested_agent || intake.requested_agent || 'orchestrator',\n      question: event.question || event.text || intake.question || 'Проаналізуй надісланий документ.',\n      extraction_requested_at: new Date().toISOString()\n    }\n  }));"
       },
       "id": "jur-build-extraction-jobs",
       "name": "Build Extraction Jobs",
@@ -342,7 +342,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const parsed = $input.first().json || {};\nconst job = $('Prepare Document Parse Payload').first().json || {};\nconst nodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];\nconst nodeText = nodes.map((node) => node.source_text || node.text || '').filter(Boolean).join('\\n\\n');\nconst extractedText = parsed.full_text || parsed.extracted_text || parsed.text || parsed.source_text || nodeText;\n\nif (!extractedText || !String(extractedText).trim()) {\n  return [];\n}\n\nreturn [{\n  json: {\n    package_id: job.package_id,\n    external_file_id: job.external_file_id,\n    workspace_id: job.workspace_id,\n    user_id: job.user_id,\n    extracted_text: String(extractedText).trim(),\n    file_name: job.source_filename || job.file_name,\n    mime_type: job.source_mime || job.mime_type,\n    extraction_method: 'linguistproai.parse_document',\n    document_type: job.document_type,\n    metadata: {\n      item_type: job.item_type,\n      source_size: job.source_size,\n      processing_lane: job.processing_lane,\n      parsed_doc_id: parsed.doc_id || null,\n      parsed_node_count: nodes.length\n    }\n  }\n}];"
+        "jsCode": "const parsed = $input.first().json || {};\nconst job = $('Prepare Document Parse Payload').first().json || {};\nconst nodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];\nconst nodeText = nodes.map((node) => node.source_text || node.text || '').filter(Boolean).join('\\n\\n');\nconst extractedText = parsed.full_text || parsed.extracted_text || parsed.text || parsed.source_text || nodeText;\n\nif (!extractedText || !String(extractedText).trim()) {\n  return [];\n}\n\nreturn [{\n  json: {\n    package_id: job.package_id,\n    external_file_id: job.external_file_id,\n    workspace_id: job.workspace_id,\n    user_id: job.user_id,\n    extracted_text: String(extractedText).trim(),\n    file_name: job.source_filename || job.file_name,\n    mime_type: job.source_mime || job.mime_type,\n    extraction_method: 'linguistproai.parse_document',\n    document_type: job.document_type,\n    auto_process: true,\n    requested_agent: job.requested_agent || 'orchestrator',\n    question: job.question || 'Проаналізуй надісланий документ.',\n    metadata: {\n      item_type: job.item_type,\n      source_size: job.source_size,\n      processing_lane: job.processing_lane,\n      parsed_doc_id: parsed.doc_id || null,\n      parsed_node_count: nodes.length\n    }\n  }\n}];"
       },
       "id": "jur-build-document-extracted-text",
       "name": "Build Document Extracted Text Payload",
@@ -418,7 +418,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const transcription = $input.first().json || {};\nconst sourceJob = $('Route Voice Or Document').first().json || {};\nconst telegramFile = $('Download Telegram Voice').first().json || {};\nconst job = { ...sourceJob, telegram_file: telegramFile };\nconst text = transcription.text || transcription.transcript || transcription.output || '';\n\nif (!String(text).trim()) {\n  return [];\n}\n\nreturn [{\n  json: {\n    package_id: job.package_id,\n    external_file_id: job.external_file_id,\n    workspace_id: job.workspace_id,\n    user_id: job.user_id,\n    extracted_text: String(text).trim(),\n    file_name: job.file_name || ('voice-' + job.external_file_id + '.oga'),\n    mime_type: job.mime_type || 'audio/ogg',\n    extraction_method: 'telegram.voice_transcription',\n    document_type: 'telegram_voice',\n    metadata: {\n      item_type: 'voice',\n      duration: job.duration || null,\n      source_size: job.file_size || null\n    }\n  }\n}];"
+        "jsCode": "const transcription = $input.first().json || {};\nconst sourceJob = $('Route Voice Or Document').first().json || {};\nconst telegramFile = $('Download Telegram Voice').first().json || {};\nconst job = { ...sourceJob, telegram_file: telegramFile };\nconst text = transcription.text || transcription.transcript || transcription.output || '';\n\nif (!String(text).trim()) {\n  return [];\n}\n\nreturn [{\n  json: {\n    package_id: job.package_id,\n    external_file_id: job.external_file_id,\n    workspace_id: job.workspace_id,\n    user_id: job.user_id,\n    extracted_text: String(text).trim(),\n    file_name: job.file_name || ('voice-' + job.external_file_id + '.oga'),\n    mime_type: job.mime_type || 'audio/ogg',\n    extraction_method: 'telegram.voice_transcription',\n    document_type: 'telegram_voice',\n    auto_process: true,\n    requested_agent: job.requested_agent || 'orchestrator',\n    question: job.question || 'Проаналізуй надісланий документ.',\n    metadata: {\n      item_type: 'voice',\n      duration: job.duration || null,\n      source_size: job.file_size || null\n    }\n  }\n}];"
       },
       "id": "jur-build-voice-extracted-text",
       "name": "Build Voice Extracted Text Payload",
@@ -849,7 +849,7 @@
       "main": [
         [
           {
-            "node": "Build Auto Process Request",
+            "node": "Build Auto Analysis Reply",
             "type": "main",
             "index": 0
           }
@@ -860,7 +860,7 @@
       "main": [
         [
           {
-            "node": "Build Auto Process Request",
+            "node": "Build Auto Analysis Reply",
             "type": "main",
             "index": 0
           }

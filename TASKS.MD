@@ -124,7 +124,7 @@
 ## Stage 9: Legal Answer Production
 
 - [x] Add query router so contract-only questions use active document chunks, exact legal references use exact lookup, and general questions use hybrid search.
-- [ ] Connect package processing to document extraction, chunking, vector search, and agents.
+- [x] Connect package processing to document extraction, chunking, vector search, and agents for Telegram-extracted documents and voice transcripts.
 - [x] Store generated answers in `legal_opinions`.
 - [x] Add lawyer review/approval state for generated opinions.
 - [ ] Add official-source verification workflow for legislation and court practice.
