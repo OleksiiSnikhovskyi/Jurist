@@ -15,7 +15,10 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - jur_internal
+      jur_internal:
+      n8n-docker_default:
+        aliases:
+          - agent-jurist-postgres
 
   agent-jurist-api:
     build:
