@@ -138,7 +138,7 @@
 
 - [x] Add API authentication for `/n8n/...` integration endpoints.
 - [x] Add rate limits and payload-size limits for bot uploads.
-- [ ] Add structured logging and execution tracing.
+- [x] Add structured logging and execution tracing.
 - [ ] Add backup/restore instructions for `jur_db`.
 - [ ] Add CI workflow for tests and migration checks.
 - [x] Replace deterministic embeddings configuration with a production Ollama embedding provider.

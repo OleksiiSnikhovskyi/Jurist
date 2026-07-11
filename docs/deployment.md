@@ -331,8 +331,10 @@ JUR_N8N_API_KEY=<shared-secret-from-secure-env>
 N8N_BOT_PAYLOAD_LIMIT_BYTES=10485760
 N8N_BOT_RATE_LIMIT_REQUESTS=120
 N8N_BOT_RATE_LIMIT_WINDOW_SECONDS=60
+STRUCTURED_REQUEST_LOGGING_ENABLED=true
 ```
 
 After changing n8n environment variables, recreate the n8n container and then re-check the three active `JUR_` workflows.
 Bot upload limits protect only `/n8n/intake/telegram` and `/n8n/intake/extracted-text`. Keep `N8N_BOT_PAYLOAD_LIMIT_BYTES` large enough for OCR/transcription text payloads, and tune the rate window to match n8n retry behavior.
+Structured request tracing emits one `http_request_completed` log event per request with `request_id`, `trace_id`, method, path, status, duration, client host, and failure flag. It intentionally does not log request bodies, prompts, OCR text, or document contents.
 For production, configure the same `JUR_N8N_API_KEY` value in both the Jurist API runtime and the n8n runtime. n8n sends it as `X-JUR-N8N-API-KEY` for every request to `JUR_API_BASE_URL`. `N8N_API_KEY` is accepted only as a non-local compatibility fallback when `JUR_N8N_API_KEY` is not set.

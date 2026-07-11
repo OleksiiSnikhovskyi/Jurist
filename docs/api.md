@@ -5,6 +5,11 @@
 `GET /health`
 
 Returns service status.
+All responses include execution tracing headers:
+
+- `X-Request-ID`: caller-supplied request ID or generated UUID;
+- `X-JUR-Trace-ID`: trace ID used in structured request logs;
+- `X-Response-Time-Ms`: request duration in milliseconds.
 
 ## Agents
 
