@@ -69,6 +69,53 @@ The current score is rule-based and capped at 100:
 A case passes when its score is at least the configured threshold, currently `75` in the dataset.
 
 
+
+## n8n/Telegram Smoke Tests
+
+Use `scripts/run_telegram_smoke_eval.py` to send controlled evaluation questions through the Jurist n8n intake path and capture bot answers for scoring.
+
+The runner has two modes:
+
+- dry-run mode writes the planned questions without calling any service;
+- live mode posts normalized Telegram intake events to `POST /n8n/intake/telegram` and writes captured `reply_text` values to `eval_reports/answers.json`.
+
+Dry-run:
+
+```bash
+python scripts/run_telegram_smoke_eval.py \
+  --dataset tests/evals/legal_questions.json \
+  --out-dir eval_reports \
+  --limit 3 \
+  --dry-run
+```
+
+Live smoke environment:
+
+- `JUR_SMOKE_API_BASE_URL` or `JUR_API_BASE_URL`;
+- `JUR_SMOKE_API_KEY`, `JUR_N8N_API_KEY`, or `N8N_API_KEY` when the backend protects `/n8n/...`;
+- `JUR_SMOKE_TELEGRAM_CHAT_ID`;
+- `JUR_SMOKE_TELEGRAM_USER_ID`;
+- `JUR_SMOKE_WORKSPACE_ID` and `JUR_SMOKE_USER_ID` for direct controlled identity, unless `--use-existing-binding` is explicitly used;
+- `JUR_SMOKE_TELEGRAM_BOT_TOKEN`, optional, only when `--notify-telegram` should mirror questions and answers to a QA Telegram chat.
+
+Live run:
+
+```bash
+python scripts/run_telegram_smoke_eval.py \
+  --dataset tests/evals/legal_questions.json \
+  --out-dir eval_reports \
+  --limit 8 \
+  --notify-telegram
+```
+
+Outputs:
+
+- `eval_reports/answers.json`, directly consumable by `scripts/run_legal_eval.py`;
+- `eval_reports/telegram_smoke_results.csv`, with package/status/error metadata;
+- `eval_reports/telegram_smoke_plan.json`, dry-run only.
+
+The live runner does not inject messages into real client conversations. It uses a controlled test identity or an explicitly selected existing Telegram binding. Telegram notification is only a QA mirror; the scoring source remains `answers.json`.
+
 ## Optional LLM Judge
 
 The LLM judge is disabled by default. Enable it only for controlled evaluation runs after answers have been captured into an answer file.
