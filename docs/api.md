@@ -128,6 +128,7 @@ Multipart form fields:
 The endpoint stores the file in `UPLOAD_DIR`, creates a `documents` record, extracts text from supported PDF/DOCX files into `documents.extracted_text`, and writes a `document.uploaded` audit log entry. Chunking is handled in later ingestion steps.
 
 ## n8n Integration
+All `/n8n/...` endpoints are protected when `JUR_N8N_API_KEY` is configured in the Jurist API environment. In non-local runtimes, `N8N_API_KEY` is accepted as a compatibility fallback. n8n must send the token in `X-JUR-N8N-API-KEY`; `X-N8N-API-KEY` is accepted as a header compatibility fallback. Requests without a valid key receive `401` before workspace-level access checks run.
 
 `POST /n8n/intake/telegram`
 

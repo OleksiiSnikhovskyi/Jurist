@@ -185,7 +185,10 @@
         "jsonBody": "={{$json}}",
         "options": {
           "timeout": 120000
-        }
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-upsert-legal-source",
       "name": "Upsert Legal Source To API",
@@ -219,7 +222,10 @@
         "jsonBody": "={{ { \"batch_size\": Number($env.JUR_RADA_REEMBED_BATCH_SIZE || 16), \"limit\": Number($env.JUR_RADA_REEMBED_LIMIT || 500) } }}",
         "options": {
           "timeout": 900000
-        }
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-reembed-missing-chunks",
       "name": "Reembed Missing Chunks",

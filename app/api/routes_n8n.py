@@ -25,6 +25,7 @@ from app.schemas.n8n_schema import (
     TelegramIntakeEvent,
 )
 from app.services.access_control import AccessDeniedError
+from app.services.n8n_auth_service import require_n8n_api_key
 from app.services.official_source_search_service import OfficialSourceSearchPlanner
 from app.services.n8n_integration_service import (
     IntakeItemNotFoundError,
@@ -33,7 +34,7 @@ from app.services.n8n_integration_service import (
     N8nIntegrationService,
 )
 
-router = APIRouter(prefix="/n8n", tags=["n8n"])
+router = APIRouter(prefix="/n8n", tags=["n8n"], dependencies=[Depends(require_n8n_api_key)])
 
 
 @router.post("/intake/telegram", response_model=N8nIntakeResponse)

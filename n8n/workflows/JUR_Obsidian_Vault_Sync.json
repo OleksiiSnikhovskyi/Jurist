@@ -55,7 +55,10 @@
         "jsonBody": "={{$json}}",
         "options": {
           "timeout": 60000
-        }
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-sync-note-api",
       "name": "Sync Note To API",

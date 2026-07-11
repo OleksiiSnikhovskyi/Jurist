@@ -9,6 +9,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import get_settings
 from app.database import Base, get_db
 from app.main import app
 from app.models.audit_log import AuditLog
@@ -140,6 +141,41 @@ def _post_telegram_text(
     )
     assert response.status_code == 200
     return response.json()
+
+
+def test_n8n_endpoints_require_api_key_when_configured(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("JUR_N8N_API_KEY", "jur-secret")
+    get_settings.cache_clear()
+
+    try:
+        missing_header = client.post(
+            "/n8n/intake/telegram",
+            json={
+                "chat_id": "100",
+                "telegram_user_id": "200",
+                "text": "Питання",
+                "action": "free_text",
+            },
+        )
+        valid_header = client.post(
+            "/n8n/intake/telegram",
+            headers={"X-JUR-N8N-API-KEY": "jur-secret"},
+            json={
+                "chat_id": "100",
+                "telegram_user_id": "200",
+                "text": "Питання",
+                "action": "free_text",
+            },
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert missing_header.status_code == 401
+    assert valid_header.status_code == 200
+    assert valid_header.json()["ok"] is False
 
 
 def test_telegram_intake_requires_workspace_binding(client: TestClient) -> None:

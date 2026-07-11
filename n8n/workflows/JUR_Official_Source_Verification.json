@@ -7,7 +7,10 @@
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [-820, -80]
+      "position": [
+        -820,
+        -80
+      ]
     },
     {
       "parameters": {
@@ -24,7 +27,10 @@
       "name": "Daily Official Source Schedule",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-820, 120]
+      "position": [
+        -820,
+        120
+      ]
     },
     {
       "parameters": {
@@ -35,7 +41,10 @@
       "name": "Build Candidate Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-560, 20]
+      "position": [
+        -560,
+        20
+      ]
     },
     {
       "parameters": {
@@ -44,13 +53,21 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{$json}}",
-        "options": {"timeout": 120000}
+        "options": {
+          "timeout": 120000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-fetch-verification-candidates",
       "name": "Fetch Verification Candidates",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-300, 20]
+      "position": [
+        -300,
+        20
+      ]
     },
     {
       "parameters": {
@@ -61,18 +78,28 @@
       "name": "Expand Candidates",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-40, 20]
+      "position": [
+        -40,
+        20
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
           "conditions": [
             {
               "id": "has-candidates",
               "leftValue": "={{$json.no_candidates}}",
               "rightValue": false,
-              "operator": {"type": "boolean", "operation": "equals"}
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -83,7 +110,10 @@
       "name": "Has Verification Candidates",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [220, 20]
+      "position": [
+        220,
+        20
+      ]
     },
     {
       "parameters": {
@@ -94,7 +124,10 @@
       "name": "Split Verification Candidates",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [480, -80]
+      "position": [
+        480,
+        -80
+      ]
     },
     {
       "parameters": {
@@ -102,12 +135,23 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "User-Agent", "value": "JuristBot/0.1 OfficialSourceVerification (+https://github.com/OleksiiSnikhovskyi/Jurist)"},
-            {"name": "Accept", "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+            {
+              "name": "User-Agent",
+              "value": "JuristBot/0.1 OfficialSourceVerification (+https://github.com/OleksiiSnikhovskyi/Jurist)"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            }
           ]
         },
         "options": {
-          "response": {"response": {"fullResponse": true, "responseFormat": "text"}},
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "text"
+            }
+          },
           "timeout": 60000
         }
       },
@@ -115,7 +159,10 @@
       "name": "Check Source URL",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [740, 20],
+      "position": [
+        740,
+        20
+      ],
       "continueOnFail": true
     },
     {
@@ -127,7 +174,10 @@
       "name": "Build Verification Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1000, 20]
+      "position": [
+        1000,
+        20
+      ]
     },
     {
       "parameters": {
@@ -136,13 +186,21 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{$json}}",
-        "options": {"timeout": 120000}
+        "options": {
+          "timeout": 120000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-record-verification-result",
       "name": "Record Verification Result",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1260, 20]
+      "position": [
+        1260,
+        20
+      ]
     },
     {
       "parameters": {
@@ -153,7 +211,10 @@
       "name": "Build Empty Verification Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 180]
+      "position": [
+        480,
+        180
+      ]
     },
     {
       "parameters": {
@@ -162,29 +223,157 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{$json}}",
-        "options": {"timeout": 120000}
+        "options": {
+          "timeout": 120000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-record-empty-verification-summary",
       "name": "Record Empty Verification Summary",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [740, 180]
+      "position": [
+        740,
+        180
+      ]
     }
   ],
   "connections": {
-    "Manual Trigger": {"main": [[{"node": "Build Candidate Request", "type": "main", "index": 0}]]},
-    "Daily Official Source Schedule": {"main": [[{"node": "Build Candidate Request", "type": "main", "index": 0}]]},
-    "Build Candidate Request": {"main": [[{"node": "Fetch Verification Candidates", "type": "main", "index": 0}]]},
-    "Fetch Verification Candidates": {"main": [[{"node": "Expand Candidates", "type": "main", "index": 0}]]},
-    "Expand Candidates": {"main": [[{"node": "Has Verification Candidates", "type": "main", "index": 0}]]},
-    "Has Verification Candidates": {"main": [[{"node": "Split Verification Candidates", "type": "main", "index": 0}], [{"node": "Build Empty Verification Summary", "type": "main", "index": 0}]]},
-    "Split Verification Candidates": {"main": [[], [{"node": "Check Source URL", "type": "main", "index": 0}]]},
-    "Check Source URL": {"main": [[{"node": "Build Verification Result", "type": "main", "index": 0}]]},
-    "Build Verification Result": {"main": [[{"node": "Record Verification Result", "type": "main", "index": 0}]]},
-    "Record Verification Result": {"main": [[{"node": "Split Verification Candidates", "type": "main", "index": 0}]]},
-    "Build Empty Verification Summary": {"main": [[{"node": "Record Empty Verification Summary", "type": "main", "index": 0}]]}
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Candidate Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Official Source Schedule": {
+      "main": [
+        [
+          {
+            "node": "Build Candidate Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Candidate Request": {
+      "main": [
+        [
+          {
+            "node": "Fetch Verification Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Verification Candidates": {
+      "main": [
+        [
+          {
+            "node": "Expand Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Candidates": {
+      "main": [
+        [
+          {
+            "node": "Has Verification Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Verification Candidates": {
+      "main": [
+        [
+          {
+            "node": "Split Verification Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Empty Verification Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Verification Candidates": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Check Source URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Source URL": {
+      "main": [
+        [
+          {
+            "node": "Build Verification Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Verification Result": {
+      "main": [
+        [
+          {
+            "node": "Record Verification Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Verification Result": {
+      "main": [
+        [
+          {
+            "node": "Split Verification Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Empty Verification Summary": {
+      "main": [
+        [
+          {
+            "node": "Record Empty Verification Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": {"executionOrder": "v1"},
+  "settings": {
+    "executionOrder": "v1"
+  },
   "pinData": {},
   "active": false,
   "versionId": "template"

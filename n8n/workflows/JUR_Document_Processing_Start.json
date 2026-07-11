@@ -61,7 +61,10 @@
         "jsonBody": "={{$json}}",
         "options": {
           "timeout": 120000
-        }
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-call-processing-api",
       "name": "Call Package Processing API",

@@ -18,6 +18,27 @@ def test_n8n_workflow_templates_are_valid_json() -> None:
         assert workflow["connections"]
 
 
+def test_jurist_api_http_nodes_send_n8n_api_key_header() -> None:
+    workflow_files = sorted(WORKFLOW_DIR.glob("JUR_*.json"))
+
+    checked_nodes = 0
+    for workflow_file in workflow_files:
+        workflow = json.loads(workflow_file.read_text(encoding="utf-8"))
+        for node in workflow["nodes"]:
+            parameters = node.get("parameters", {})
+            if node.get("type") != "n8n-nodes-base.httpRequest":
+                continue
+            if "JUR_API_BASE_URL" not in str(parameters.get("url", "")):
+                continue
+            checked_nodes += 1
+            assert parameters.get("sendHeaders") is True, node["name"]
+            assert parameters.get("specifyHeaders") == "json", node["name"]
+            assert "X-JUR-N8N-API-KEY" in parameters.get("jsonHeaders", ""), node["name"]
+            assert "JUR_N8N_API_KEY" in parameters.get("jsonHeaders", ""), node["name"]
+
+    assert checked_nodes > 0
+
+
 def test_telegram_intake_template_has_required_actions() -> None:
     workflow = json.loads((WORKFLOW_DIR / "JUR_Bot_Intake_Queue.json").read_text(encoding="utf-8"))
     workflow_text = json.dumps(workflow, ensure_ascii=False)

@@ -136,7 +136,7 @@
 
 ## Stage 10: Production Hardening
 
-- [ ] Add API authentication for `/n8n/...` integration endpoints.
+- [x] Add API authentication for `/n8n/...` integration endpoints.
 - [ ] Add rate limits and payload-size limits for bot uploads.
 - [ ] Add structured logging and execution tracing.
 - [ ] Add backup/restore instructions for `jur_db`.

@@ -47,7 +47,10 @@
         "jsonBody": "={{$json}}",
         "options": {
           "timeout": 900000
-        }
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-send-intake-api",
       "name": "Send Intake Event To API",
@@ -362,7 +365,10 @@
         "jsonBody": "={{$json}}",
         "options": {
           "timeout": 300000
-        }
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-attach-document-extracted-text",
       "name": "Attach Document Extracted Text To API",
@@ -438,7 +444,10 @@
         "jsonBody": "={{$json}}",
         "options": {
           "timeout": 300000
-        }
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-attach-voice-extracted-text",
       "name": "Attach Voice Extracted Text To API",
@@ -640,7 +649,10 @@
         "jsonBody": "={{$json}}",
         "options": {
           "timeout": 900000
-        }
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-process-auto-extracted-package",
       "name": "Process Auto Extracted Package",

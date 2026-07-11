@@ -7,7 +7,10 @@
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [-520, 0]
+      "position": [
+        -520,
+        0
+      ]
     },
     {
       "parameters": {
@@ -18,7 +21,10 @@
       "name": "Build Search Plan Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-260, 0]
+      "position": [
+        -260,
+        0
+      ]
     },
     {
       "parameters": {
@@ -27,24 +33,39 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{$json}}",
-        "options": {"timeout": 120000}
+        "options": {
+          "timeout": 120000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-create-controlled-search-plan",
       "name": "Create Controlled Search Plan",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [0, 0]
+      "position": [
+        0,
+        0
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
           "conditions": [
             {
               "id": "search-allowed",
               "leftValue": "={{$json.search_allowed}}",
               "rightValue": true,
-              "operator": {"type": "boolean", "operation": "equals"}
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -55,15 +76,50 @@
       "name": "Search Allowed",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [260, 0]
+      "position": [
+        260,
+        0
+      ]
     }
   ],
   "connections": {
-    "Manual Trigger": {"main": [[{"node": "Build Search Plan Request", "type": "main", "index": 0}]]},
-    "Build Search Plan Request": {"main": [[{"node": "Create Controlled Search Plan", "type": "main", "index": 0}]]},
-    "Create Controlled Search Plan": {"main": [[{"node": "Search Allowed", "type": "main", "index": 0}]]}
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Search Plan Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search Plan Request": {
+      "main": [
+        [
+          {
+            "node": "Create Controlled Search Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Controlled Search Plan": {
+      "main": [
+        [
+          {
+            "node": "Search Allowed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": {"executionOrder": "v1"},
+  "settings": {
+    "executionOrder": "v1"
+  },
   "pinData": {},
   "active": false,
   "versionId": "template"

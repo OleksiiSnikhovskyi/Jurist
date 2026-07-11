@@ -26,7 +26,14 @@ Required n8n environment variables:
 
 - `JUR_API_BASE_URL`: FastAPI backend URL, for example `http://localhost:8000`.
 - `JUR_N8N_WEBHOOK_BASE_URL`: public n8n webhook base URL, for example `https://n8n.example.com/webhook`.
+- `JUR_N8N_API_KEY`: shared service token sent to Jurist API as `X-JUR-N8N-API-KEY`; if unset, templates fall back to `N8N_API_KEY`.
 
+
+## Jurist API Authentication
+
+All workflow HTTP Request nodes that call `JUR_API_BASE_URL` send `X-JUR-N8N-API-KEY` from `JUR_N8N_API_KEY` with `N8N_API_KEY` as a compatibility fallback. Do not hard-code token values in workflow JSON.
+
+FastAPI protects `/n8n/...` routes when `JUR_N8N_API_KEY` is configured. In non-local runtimes, `N8N_API_KEY` is accepted as a compatibility fallback. Local development can leave `JUR_N8N_API_KEY` unset to keep tests and manual smoke checks simple.
 ## Bot Intake Requirements
 
 The user may send several materials before asking the system to process them. The workflow must collect incoming items into a pending intake package and must not start document analysis until the user explicitly requests processing.

@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     test_database_url: str = "sqlite+pysqlite:///:memory:"
     upload_dir: str = "uploads"
     export_dir: str = "exports"
+    jur_n8n_api_key: str | None = None
+    n8n_api_key: str | None = None
     embedding_provider: str = "deterministic"
     embedding_model: str = "local-hash-v1"
     embedding_base_url: str | None = None
@@ -29,7 +31,9 @@ class Settings(BaseSettings):
     jur_ollama_num_predict: int = 3072
     cors_origins: list[str] = Field(default_factory=list)
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=("../.env", ".env"), env_file_encoding="utf-8", extra="ignore"
+    )
 
 
 @lru_cache

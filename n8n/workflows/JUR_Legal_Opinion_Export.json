@@ -7,7 +7,10 @@
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [-500, 0]
+      "position": [
+        -500,
+        0
+      ]
     },
     {
       "parameters": {
@@ -18,7 +21,10 @@
       "name": "Build Export Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-240, 0]
+      "position": [
+        -240,
+        0
+      ]
     },
     {
       "parameters": {
@@ -27,20 +33,50 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ { user_id: $json.user_id, export_format: $json.export_format } }}",
-        "options": {"timeout": 180000}
+        "options": {
+          "timeout": 180000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ { \"X-JUR-N8N-API-KEY\": $env.JUR_N8N_API_KEY || $env.N8N_API_KEY || \"\" } }}"
       },
       "id": "jur-export-legal-opinion",
       "name": "Export Legal Opinion",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [20, 0]
+      "position": [
+        20,
+        0
+      ]
     }
   ],
   "connections": {
-    "Manual Trigger": {"main": [[{"node": "Build Export Request", "type": "main", "index": 0}]]},
-    "Build Export Request": {"main": [[{"node": "Export Legal Opinion", "type": "main", "index": 0}]]}
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Export Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Export Request": {
+      "main": [
+        [
+          {
+            "node": "Export Legal Opinion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": {"executionOrder": "v1"},
+  "settings": {
+    "executionOrder": "v1"
+  },
   "pinData": {},
   "active": false,
   "versionId": "template"
