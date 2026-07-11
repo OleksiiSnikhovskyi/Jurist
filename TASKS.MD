@@ -149,4 +149,4 @@
 - [x] Add evaluation report output in Markdown/CSV for offline review and Kaggle-style analysis.
 - [x] Add optional LLM judge for legal relevance, completeness, hallucination risk, and answer form.
 - [x] Add n8n/Telegram smoke tests that send controlled questions and capture bot answers.
-- [ ] Define quality thresholds for release readiness and lawyer review escalation.
+- [x] Define quality thresholds for release readiness and lawyer review escalation.

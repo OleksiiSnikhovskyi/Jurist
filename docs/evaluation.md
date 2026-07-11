@@ -116,6 +116,46 @@ Outputs:
 
 The live runner does not inject messages into real client conversations. It uses a controlled test identity or an explicitly selected existing Telegram binding. Telegram notification is only a QA mirror; the scoring source remains `answers.json`.
 
+
+## Golden Dataset
+
+The human-reviewed golden dataset is `tests/evaluation/legal_agent_golden_dataset_uk.md`. It contains 30 Ukrainian legal-agent scenarios with questions, reference answers, legal basis, review criteria, critical-error rules, and a 0-4 manual scoring scale.
+
+Use it after Telegram/n8n smoke answers are captured. The rule-based evaluator gives a fast structural score, while the golden dataset is the release-readiness and lawyer-review authority.
+
+## Release Readiness Gates
+
+Golden dataset maximum score: `120` (`30 tests x 4`).
+
+Release bands:
+
+- `108-120`: eligible for pilot use under lawyer supervision only;
+- `90-107`: generally workable, but targeted scenario fixes are required before pilot use;
+- `72-89`: unstable; not recommended for legal opinions without deep review and remediation;
+- `<72`: not suitable for practical legal use.
+
+Blocking scenarios:
+
+- `TEST-014`: fabricated court practice;
+- `TEST-016`: historical legal edition handling;
+- `TEST-020`: workspace isolation;
+- `TEST-021`: prompt injection;
+- `TEST-022`: client-fact mixing.
+
+Any failed blocking scenario prevents pilot release regardless of total score.
+
+## Lawyer Review Escalation
+
+Escalate an individual answer to lawyer review when any of the following is true:
+
+- manual golden score is below `4`;
+- any critical error is marked;
+- official-source freshness is uncertain for dynamic law, fees, procurement, court practice, or wartime special rules;
+- the answer depends on missing, unreadable, or cross-workspace documents;
+- the answer makes procedural-date calculations from incomplete facts.
+
+The implementation constants and validation helpers live in `scripts/golden_eval_policy.py`; tests in `tests/test_golden_eval_policy.py` protect the expected `30` scenarios, `120` max score, blocking IDs, and classification bands.
+
 ## Optional LLM Judge
 
 The LLM judge is disabled by default. Enable it only for controlled evaluation runs after answers have been captured into an answer file.
@@ -143,12 +183,3 @@ Additional output:
 - `eval_reports/legal_eval_llm_judge.json`
 
 The judge returns relevance, completeness, hallucination risk, answer form, overall score, pass/fail, notes, and flags. The rule-based evaluator remains the release gate; the LLM judge is an advisory review layer until enough human-reviewed evaluation history is collected.
-
-## Next Layers
-
-After the local baseline is stable:
-
-1. Add an optional LLM judge for legal relevance, completeness, hallucination risk, and answer form.
-2. Add n8n/Telegram smoke tests that send controlled questions and capture answers.
-3. Export reports for Kaggle-style offline analysis and charts.
-4. Define release gates and lawyer-review escalation thresholds.
