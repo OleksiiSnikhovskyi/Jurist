@@ -65,3 +65,6 @@ Specialized agents return source references and warnings. Contract review, legal
 Structured request logs include request IDs, trace IDs, method, path, status, duration, client host, and failure flags only. They must not include request bodies, prompts, OCR text, voice transcripts, full document text, or generated legal answers.
 
 Bot upload rate and payload limits are enforced before intake storage for `/n8n/intake/telegram` and `/n8n/intake/extracted-text`. Oversized payloads return `413`; enabled rate limits return `429` with `Retry-After`, reducing accidental retry storms and overly large OCR/transcription submissions.
+## Backup Confidentiality
+
+Database backups are confidential production artifacts. They may contain private workspace documents, Telegram intake metadata, legal opinions, audit events, and legal-source chunks. Store dumps outside git, encrypt them at rest, restrict access, and test restores according to `docs/backup_restore.md`.

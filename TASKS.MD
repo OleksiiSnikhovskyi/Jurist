@@ -139,6 +139,14 @@
 - [x] Add API authentication for `/n8n/...` integration endpoints.
 - [x] Add rate limits and payload-size limits for bot uploads.
 - [x] Add structured logging and execution tracing.
-- [ ] Add backup/restore instructions for `jur_db`.
-- [ ] Add CI workflow for tests and migration checks.
+- [x] Add backup/restore instructions for `jur_db`.
+- [x] Add CI workflow for tests and migration checks.
 - [x] Replace deterministic embeddings configuration with a production Ollama embedding provider.
+## Stage 11: Evaluation and QA Harness
+
+- [ ] Add local legal-answer evaluation dataset across multiple domains.
+- [ ] Add rule-based answer quality scoring for structure, official-source grounding, required terms, and forbidden claims.
+- [ ] Add evaluation report output in Markdown/CSV for offline review and Kaggle-style analysis.
+- [ ] Add optional LLM judge for legal relevance, completeness, hallucination risk, and answer form.
+- [ ] Add n8n/Telegram smoke tests that send controlled questions and capture bot answers.
+- [ ] Define quality thresholds for release readiness and lawyer review escalation.

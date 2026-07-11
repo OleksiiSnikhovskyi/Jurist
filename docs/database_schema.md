@@ -31,3 +31,5 @@ Official-source verification metadata is stored in `legal_source_verifications`;
 Controlled official-source search plans are stored in `official_source_search_runs`. The table records trigger metadata, generated official-domain site queries, accepted/rejected candidate URLs, and compact audit metadata only; fetched page text is not stored there.
 
 Final answer exports are stored in `legal_opinion_exports`. The table records the legal opinion, workspace, requester, format, path, content type, file size, and review/source metadata for generated DOCX/PDF files.
+
+Backup and restore procedures for jur_db are documented in docs/backup_restore.md.
