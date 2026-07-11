@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import sys
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -48,6 +51,27 @@ class EvalResult:
     forbidden_hits: list[str]
     official_source_hits: list[str]
     blocked_source_hits: list[str]
+
+
+@dataclass(frozen=True)
+class LLMJudgeConfig:
+    api_key: str
+    model: str
+    base_url: str = "https://api.openai.com/v1"
+    timeout_seconds: int = 60
+
+
+@dataclass(frozen=True)
+class LLMJudgeResult:
+    case_id: str
+    relevance: int
+    completeness: int
+    hallucination_risk: int
+    answer_form: int
+    overall_score: int
+    passed: bool
+    notes: str
+    flags: list[str]
 
 
 def load_dataset(path: Path) -> tuple[list[EvalCase], int]:
@@ -178,6 +202,144 @@ def normalize_domain(value: str) -> str:
     return (parsed.netloc or parsed.path).lower().removeprefix("www.")
 
 
+def build_llm_judge_prompt(case: EvalCase, answer: str, rule_result: EvalResult) -> str:
+    return "\n".join(
+        [
+            "You are a legal QA judge for a Ukrainian legal assistant.",
+            "Evaluate only the answer quality. Do not provide legal advice.",
+            "Return strict JSON with these keys only:",
+            "relevance, completeness, hallucination_risk, answer_form, overall_score, passed, notes, flags.",
+            "Scores relevance/completeness/answer_form are integers 0-5.",
+            "hallucination_risk is 0 for low risk and 5 for high risk.",
+            "overall_score is 0-100. passed is boolean.",
+            "Flag unsupported exact claims, missing official sources, poor structure, or overconfident wording.",
+            "",
+            f"Case ID: {case.id}",
+            f"Domain: {case.domain}",
+            f"Question: {case.question}",
+            f"Required sections: {', '.join(case.required_sections)}",
+            f"Required terms: {', '.join(case.required_terms)}",
+            f"Expected official sources: {', '.join(case.expected_official_sources)}",
+            f"Rule score: {rule_result.score}",
+            f"Rule missing terms: {', '.join(rule_result.missing_terms) or 'none'}",
+            f"Rule blocked sources: {', '.join(rule_result.blocked_source_hits) or 'none'}",
+            "",
+            "Answer:",
+            answer,
+        ]
+    )
+
+
+def llm_judge_config_from_env() -> LLMJudgeConfig:
+    api_key = os.getenv("JURIST_LLM_JUDGE_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "Set JURIST_LLM_JUDGE_API_KEY or OPENAI_API_KEY before using --llm-judge."
+        )
+    model = os.getenv("JURIST_LLM_JUDGE_MODEL", "gpt-4o-mini")
+    base_url = os.getenv("JURIST_LLM_JUDGE_BASE_URL") or os.getenv(
+        "OPENAI_BASE_URL", "https://api.openai.com/v1"
+    )
+    timeout = int(os.getenv("JURIST_LLM_JUDGE_TIMEOUT_SECONDS", "60"))
+    return LLMJudgeConfig(api_key=api_key, model=model, base_url=base_url, timeout_seconds=timeout)
+
+
+def request_llm_judge(
+    case: EvalCase,
+    answer: str,
+    rule_result: EvalResult,
+    config: LLMJudgeConfig,
+) -> LLMJudgeResult:
+    endpoint = urljoin(config.base_url.rstrip("/") + "/", "chat/completions")
+    payload = {
+        "model": config.model,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a strict legal-answer evaluation judge. Return JSON only.",
+            },
+            {
+                "role": "user",
+                "content": build_llm_judge_prompt(case, answer, rule_result),
+            },
+        ],
+    }
+    request = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {config.api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=config.timeout_seconds) as response:
+            raw = json.loads(response.read().decode("utf-8"))
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"LLM judge request failed: {exc}") from exc
+    content = raw["choices"][0]["message"]["content"]
+    return parse_llm_judge_response(case.id, content)
+
+
+def parse_llm_judge_response(case_id: str, content: str) -> LLMJudgeResult:
+    raw = json.loads(content)
+    return LLMJudgeResult(
+        case_id=case_id,
+        relevance=bounded_int(raw.get("relevance"), 0, 5),
+        completeness=bounded_int(raw.get("completeness"), 0, 5),
+        hallucination_risk=bounded_int(raw.get("hallucination_risk"), 0, 5),
+        answer_form=bounded_int(raw.get("answer_form"), 0, 5),
+        overall_score=bounded_int(raw.get("overall_score"), 0, 100),
+        passed=bool(raw.get("passed", False)),
+        notes=str(raw.get("notes", "")),
+        flags=[str(flag) for flag in raw.get("flags", [])],
+    )
+
+
+def bounded_int(value: object, lower: int, upper: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return lower
+    return max(lower, min(upper, number))
+
+
+def judge_answers_with_llm(
+    cases: list[EvalCase],
+    answers: dict[str, str],
+    rule_results: list[EvalResult],
+    config: LLMJudgeConfig,
+) -> list[LLMJudgeResult]:
+    cases_by_id = {case.id: case for case in cases}
+    judge_results = []
+    for rule_result in rule_results:
+        case = cases_by_id[rule_result.case_id]
+        judge_results.append(request_llm_judge(case, answers.get(case.id, ""), rule_result, config))
+    return judge_results
+
+
+def write_llm_judge_json(results: list[LLMJudgeResult], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = [
+        {
+            "case_id": result.case_id,
+            "relevance": result.relevance,
+            "completeness": result.completeness,
+            "hallucination_risk": result.hallucination_risk,
+            "answer_form": result.answer_form,
+            "overall_score": result.overall_score,
+            "passed": result.passed,
+            "notes": result.notes,
+            "flags": result.flags,
+        }
+        for result in results
+    ]
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def write_csv(results: list[EvalResult], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -253,6 +415,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--answers", type=Path, default=None)
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_REPORT_DIR)
     parser.add_argument("--fail-under", type=int, default=None)
+    parser.add_argument("--llm-judge", action="store_true")
     return parser.parse_args()
 
 
@@ -264,6 +427,15 @@ def main() -> int:
     results = evaluate_answers(cases, answers, threshold)
     write_csv(results, args.out_dir / "legal_eval_results.csv")
     write_markdown(results, args.out_dir / "legal_eval_report.md", threshold)
+    if args.llm_judge:
+        try:
+            judge_results = judge_answers_with_llm(
+                cases, answers, results, llm_judge_config_from_env()
+            )
+        except RuntimeError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        write_llm_judge_json(judge_results, args.out_dir / "legal_eval_llm_judge.json")
     if results and min(result.score for result in results) < threshold:
         return 1
     return 0

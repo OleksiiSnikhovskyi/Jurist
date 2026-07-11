@@ -68,6 +68,35 @@ The current score is rule-based and capped at 100:
 
 A case passes when its score is at least the configured threshold, currently `75` in the dataset.
 
+
+## Optional LLM Judge
+
+The LLM judge is disabled by default. Enable it only for controlled evaluation runs after answers have been captured into an answer file.
+
+Required environment:
+
+- `JURIST_LLM_JUDGE_API_KEY` or `OPENAI_API_KEY`;
+- `JURIST_LLM_JUDGE_MODEL` for the provider model, defaulting to `gpt-4o-mini`;
+- `JURIST_LLM_JUDGE_BASE_URL` or `OPENAI_BASE_URL` for an OpenAI-compatible `/chat/completions` endpoint;
+- `JURIST_LLM_JUDGE_TIMEOUT_SECONDS`, optional, default `60`.
+
+Run:
+
+```bash
+python scripts/run_legal_eval.py \
+  --dataset tests/evals/legal_questions.json \
+  --answers eval_reports/answers.json \
+  --out-dir eval_reports \
+  --fail-under 75 \
+  --llm-judge
+```
+
+Additional output:
+
+- `eval_reports/legal_eval_llm_judge.json`
+
+The judge returns relevance, completeness, hallucination risk, answer form, overall score, pass/fail, notes, and flags. The rule-based evaluator remains the release gate; the LLM judge is an advisory review layer until enough human-reviewed evaluation history is collected.
+
 ## Next Layers
 
 After the local baseline is stable:
