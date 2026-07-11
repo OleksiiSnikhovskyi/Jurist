@@ -9,6 +9,8 @@ from scripts.prepare_priority_legal_source_manifest import prepare_manifest_rows
 def test_official_source_url_accepts_priority_domains() -> None:
     assert is_official_source_url("https://zakon.rada.gov.ua/laws/show/435-15")
     assert is_official_source_url("https://supreme.court.gov.ua/supreme/pres-centr/news/")
+    assert is_official_source_url("https://e-construction.gov.ua/laws")
+    assert is_official_source_url("https://uas.gov.ua/standardization")
 
 
 def test_official_source_url_rejects_private_sources() -> None:

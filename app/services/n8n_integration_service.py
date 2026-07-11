@@ -2,18 +2,20 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from time import perf_counter
 from urllib.parse import urlparse
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models.client_profile import ClientProfile
 from app.models.document import Document, DocumentChunk
 from app.models.lawyer_profile import LawyerProfile
 from app.models.legal_opinion import LegalOpinion
 from app.models.legal_source import LegalSource
+from app.models.legal_source_verification import LegalSourceVerification
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
 from app.models.workspace import Workspace, WorkspaceMember
 from app.repositories.document_repository import DocumentRepository
@@ -25,6 +27,11 @@ from app.schemas.n8n_schema import (
     N8nLegalSourceUpsertResponse,
     N8nObsidianNoteRequest,
     N8nObsidianNoteResponse,
+    N8nOfficialSourceCandidate,
+    N8nOfficialSourceCandidateRequest,
+    N8nOfficialSourceCandidateResponse,
+    N8nOfficialSourceVerificationRequest,
+    N8nOfficialSourceVerificationResponse,
     N8nProcessPackageRequest,
     N8nProcessPackageResponse,
     N8nReembedMissingChunksRequest,
@@ -33,7 +40,6 @@ from app.schemas.n8n_schema import (
     N8nTelegramBindingResponse,
     TelegramIntakeEvent,
 )
-from app.config import get_settings
 from app.services.access_control import AccessControlService, WorkspacePermission
 from app.services.agent_context_service import AgentContextService
 from app.services.audit_log_service import AuditLogCommand, AuditLogService
@@ -47,7 +53,11 @@ from app.services.ollama_service import (
     SourceFragment,
 )
 from app.services.vector_search_service import VectorSearchCommand, VectorSearchService
-
+from scripts.legal_source_policy import (
+    is_obsolete_validity_status,
+    is_official_source_url,
+    normalize_domain,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1469,6 +1479,171 @@ class N8nIntegrationService:
             message="Legal source synced.",
         )
 
+    def list_official_source_verification_candidates(
+        self,
+        request: N8nOfficialSourceCandidateRequest,
+    ) -> N8nOfficialSourceCandidateResponse:
+        self.access_control.require_permission(
+            workspace_id=request.workspace_id,
+            user_id=request.user_id,
+            permission=WorkspacePermission.READ,
+        )
+        cutoff = datetime.now(UTC) - timedelta(days=request.max_age_days)
+        sources = (
+            self.db.query(LegalSource)
+            .filter(LegalSource.source_url.is_not(None))
+            .order_by(
+                LegalSource.last_checked_at.asc().nullsfirst(),
+                LegalSource.updated_at.desc(),
+            )
+            .limit(max(request.limit * 4, request.limit))
+            .all()
+        )
+        candidates: list[N8nOfficialSourceCandidate] = []
+        for source in sources:
+            if len(candidates) >= request.limit:
+                break
+            if not source.source_url or not is_official_source_url(source.source_url):
+                continue
+            if is_obsolete_validity_status(source.validity_status):
+                continue
+            latest = (
+                self.db.query(LegalSourceVerification)
+                .filter(
+                    LegalSourceVerification.legal_source_id == source.id,
+                    LegalSourceVerification.source_url == source.source_url,
+                )
+                .order_by(LegalSourceVerification.checked_at.desc())
+                .first()
+            )
+            if latest is not None and latest.checked_at >= cutoff:
+                continue
+            candidates.append(
+                N8nOfficialSourceCandidate(
+                    legal_source_id=source.id,
+                    source_name=source.source_name,
+                    source_type=source.source_type,
+                    source_url=source.source_url,
+                    source_domain=normalize_domain(source.source_url),
+                    document_number=source.document_number,
+                    validity_status=source.validity_status,
+                    last_checked_at=source.last_checked_at,
+                )
+            )
+        return N8nOfficialSourceCandidateResponse(
+            ok=True,
+            candidates=candidates,
+            message=f"Official-source verification candidates: {len(candidates)}.",
+        )
+
+    def record_official_source_verifications(
+        self,
+        request: N8nOfficialSourceVerificationRequest,
+    ) -> N8nOfficialSourceVerificationResponse:
+        self.access_control.require_permission(
+            workspace_id=request.workspace_id,
+            user_id=request.user_id,
+            permission=WorkspacePermission.WRITE_DOCUMENTS,
+        )
+        now = datetime.now(UTC)
+        counts = {
+            "verified": 0,
+            "needs_review": 0,
+            "unavailable": 0,
+            "blocked": 0,
+            "invalid": 0,
+        }
+        processed = 0
+        for item in request.verifications:
+            checked_at = item.checked_at or now
+            source = self._resolve_legal_source(item.legal_source_id, item.source_url)
+            legal_source_id = source.id if source is not None else item.legal_source_id
+            verification = None
+            if legal_source_id:
+                verification = (
+                    self.db.query(LegalSourceVerification)
+                    .filter(
+                        LegalSourceVerification.legal_source_id == legal_source_id,
+                        LegalSourceVerification.source_url == item.source_url,
+                    )
+                    .one_or_none()
+                )
+            if verification is None:
+                verification = LegalSourceVerification(
+                    legal_source_id=legal_source_id,
+                    source_url=item.source_url,
+                    checked_at=checked_at,
+                )
+                self.db.add(verification)
+
+            verification.legal_source_id = legal_source_id
+            verification.source_url = item.source_url
+            verification.source_domain = item.source_domain or normalize_domain(item.source_url)
+            verification.source_kind = item.source_kind
+            verification.allowlist_status = item.allowlist_status
+            verification.verification_status = item.verification_status
+            verification.http_status = item.http_status
+            verification.final_url = item.final_url
+            verification.content_type = item.content_type
+            verification.confidence = item.confidence
+            verification.checked_at = checked_at
+            verification.checked_by = item.checked_by
+            verification.evidence_summary = item.evidence_summary
+            verification.verification_payload = item.verification_payload
+            if source is not None:
+                source.last_checked_at = checked_at
+            processed += 1
+            self._increment_verification_count(counts, item.verification_status)
+
+        self.audit_log_service.record(
+            AuditLogCommand(
+                action="n8n.official_source_verification_recorded",
+                user_id=request.user_id,
+                workspace_id=request.workspace_id,
+                object_type="legal_source_verification",
+                object_id=None,
+                metadata={"processed": processed, **counts},
+            ),
+            commit=False,
+        )
+        self.db.commit()
+        return N8nOfficialSourceVerificationResponse(
+            ok=True,
+            processed=processed,
+            verified=counts["verified"],
+            needs_review=counts["needs_review"],
+            unavailable=counts["unavailable"],
+            blocked=counts["blocked"],
+            invalid=counts["invalid"],
+            message=f"Official-source verification metadata recorded: {processed}.",
+        )
+
+    def _resolve_legal_source(
+        self,
+        legal_source_id: str | None,
+        source_url: str,
+    ) -> LegalSource | None:
+        if legal_source_id:
+            source = self.db.get(LegalSource, legal_source_id)
+            if source is not None:
+                return source
+        return (
+            self.db.query(LegalSource)
+            .filter(LegalSource.source_url == source_url)
+            .one_or_none()
+        )
+
+    def _increment_verification_count(self, counts: dict[str, int], status: str) -> None:
+        if status == "verified":
+            counts["verified"] += 1
+        elif status in {"blocked_domain"}:
+            counts["blocked"] += 1
+        elif status in {"invalid_url"}:
+            counts["invalid"] += 1
+        elif status in {"source_unavailable", "not_found"}:
+            counts["unavailable"] += 1
+        else:
+            counts["needs_review"] += 1
     def reembed_missing_chunks(
         self,
         request: N8nReembedMissingChunksRequest,
@@ -2634,10 +2809,3 @@ class N8nIntegrationService:
             attachments=attachments,
             text_messages=text_messages,
         )
-
-
-
-
-
-
-

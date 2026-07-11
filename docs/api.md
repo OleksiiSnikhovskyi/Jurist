@@ -189,6 +189,42 @@ Expected fields:
 
 This endpoint accepts only official `zakon.rada.gov.ua` URLs. Local LLM output may be passed in `summary`, `topic_tags`, and `source_type`, but official metadata and `full_text` should come from the Rada source page.
 
+
+`POST /n8n/legal-sources/verification-candidates`
+
+Returns stale official legal-source URLs that should be checked by n8n. The endpoint requires `workspace_id` and `user_id` for access control, accepts `limit` and `max_age_days`, and returns only allowlisted official domains that are not obsolete.
+
+`POST /n8n/legal-sources/verify-official-sources`
+
+Stores official-source verification metadata for legislation and court-practice references. It records URL/domain, allowlist status, verification status, HTTP status, confidence, checked timestamp, and compact evidence payloads in `legal_source_verifications`. It does not store fetched page text.
+
+
+`POST /n8n/official-source-search/plan`
+
+Builds a controlled official-source web-search plan. The endpoint does not fetch pages itself. It records metadata in `official_source_search_runs`, returns allowlisted `site:` queries, and classifies candidate URLs as accepted or rejected.
+
+Search is allowed only when at least one controlled trigger is present:
+
+- `trigger_reason` is `low_rag_confidence`, `current_validity_required`, or `exact_reference_verification`;
+- `rag_confidence` is below the backend threshold;
+- `requires_current_validity=true`;
+- `exact_references` contains one or more legal/court references.
+
+```json
+{
+  "workspace_id": "uuid",
+  "user_id": "uuid",
+  "query": "стаття 625 ЦК України",
+  "trigger_reason": "low_rag_confidence",
+  "rag_confidence": 0.2,
+  "requires_current_validity": false,
+  "exact_references": ["ЦК України ст. 625"],
+  "candidate_urls": ["https://zakon.rada.gov.ua/laws/show/435-15"]
+}
+```
+
+Allowed domains include `zakon.rada.gov.ua`, `court.gov.ua`, `supreme.court.gov.ua`, `kmu.gov.ua`, ministries, NERC, DBN/DSTU-related official sources. News sites, private legal blogs, forums, and unofficial commentary are rejected.
+
 `POST /n8n/telegram/bindings`
 
 Creates or updates the active mapping between a Telegram account and an application workspace user. The target `user_id` must already have `write_documents` permission in the target `workspace_id`.
@@ -213,3 +249,30 @@ When `JUR_OLLAMA_BASE_URL` is configured, FastAPI sends extracted text messages,
 `POST /n8n/obsidian/sync-note`
 
 Receives a normalized Obsidian Markdown note from `JUR_Obsidian_Vault_Sync`, stores it as an `obsidian_markdown` document, chunks it, and makes it available to workspace-scoped vector search.
+
+## Legal Opinions
+
+`GET /legal-opinions/by-workspace/{workspace_id}?user_id={user_id}`
+
+Lists legal opinions visible to the workspace member.
+
+`GET /legal-opinions/{opinion_id}?user_id={user_id}`
+
+Returns one legal opinion when the user has workspace read permission.
+
+`PATCH /legal-opinions/{opinion_id}/review`
+
+Updates review status and review notes. The caller must have review permission.
+
+`POST /legal-opinions/{opinion_id}/export`
+
+Exports a final answer to DOCX or PDF and stores export metadata in `legal_opinion_exports`.
+
+```json
+{
+  "user_id": "uuid",
+  "export_format": "docx"
+}
+```
+
+`export_format` may be `docx` or `pdf`. DOCX export uses `python-docx`; PDF export converts the generated DOCX through LibreOffice/soffice. Files are written below `EXPORT_DIR/legal_opinions`.

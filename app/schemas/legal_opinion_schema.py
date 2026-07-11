@@ -5,9 +5,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
-LEGAL_OPINION_REVIEW_STATUSES = frozenset(
-    {"draft", "approved", "rejected", "needs_revision"}
-)
+LEGAL_OPINION_REVIEW_STATUSES = frozenset({"draft", "approved", "rejected", "needs_revision"})
 
 
 class LegalOpinionResponse(BaseModel):
@@ -34,3 +32,19 @@ class LegalOpinionReviewUpdate(BaseModel):
     user_id: str
     review_status: str = Field(pattern="^(approved|rejected|needs_revision|draft)$")
     review_notes: str | None = None
+
+
+class LegalOpinionExportRequest(BaseModel):
+    user_id: str
+    export_format: str = Field(pattern="^(docx|pdf)$")
+
+
+class LegalOpinionExportResponse(BaseModel):
+    ok: bool
+    export_id: str
+    legal_opinion_id: str
+    export_format: str
+    file_path: str
+    content_type: str
+    file_size: int
+    message: str

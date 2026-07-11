@@ -4,6 +4,8 @@ from collections.abc import Generator
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -14,8 +16,11 @@ from app.models.client_profile import ClientProfile
 from app.models.document import Document, DocumentChunk
 from app.models.lawyer_profile import LawyerProfile
 from app.models.legal_opinion import LegalOpinion
+from app.models.legal_source import LegalSource
 from app.models.legal_source_alias import LegalSourceAlias
+from app.models.legal_source_verification import LegalSourceVerification
 from app.models.n8n_intake import N8nIntakeItem, N8nIntakePackage, N8nTelegramBinding
+from app.models.official_source_search_run import OfficialSourceSearchRun
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.n8n_schema import N8nProcessPackageRequest
@@ -26,6 +31,11 @@ from app.services.ollama_service import (
     SourceFragment,
 )
 from app.services.vector_search_service import VectorSearchCommand, VectorSearchResult
+
+
+@compiles(ARRAY, "sqlite")
+def _compile_pg_array_for_sqlite(type_, compiler, **kw) -> str:
+    return "JSON"
 
 
 @pytest.fixture()
@@ -47,6 +57,9 @@ def db_session() -> Generator[Session, None, None]:
             DocumentChunk.__table__,
             LegalSourceAlias.__table__,
             LegalOpinion.__table__,
+            LegalSource.__table__,
+            LegalSourceVerification.__table__,
+            OfficialSourceSearchRun.__table__,
             AuditLog.__table__,
             N8nIntakePackage.__table__,
             N8nIntakeItem.__table__,
@@ -167,8 +180,7 @@ def test_telegram_intake_creates_pending_package(
                     "file_id": "telegram-file-1",
                     "file_name": "contract.docx",
                     "mime_type": (
-                        "application/vnd.openxmlformats-officedocument."
-                        "wordprocessingml.document"
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     ),
                 }
             ],
@@ -339,14 +351,15 @@ def test_edit_profile_prompt_updates_existing_lawyer_profile(
     assert profile.system_prompt == "Я адвокат у сфері податкових спорів, відповідай стисло."
 
 
-
 def test_telegram_workspace_selection_switches_active_case(
     client: TestClient,
     db_session: Session,
 ) -> None:
     _seed_workspace(db_session)
     _seed_lawyer_profile(db_session)
-    db_session.add(Workspace(id="workspace-2", name="Case B", owner_id="user-1", workspace_type="case"))
+    db_session.add(
+        Workspace(id="workspace-2", name="Case B", owner_id="user-1", workspace_type="case")
+    )
     db_session.add(
         WorkspaceMember(
             id="member-2",
@@ -385,7 +398,9 @@ def test_telegram_intake_uses_active_workspace_from_binding_metadata(
 ) -> None:
     _seed_workspace(db_session)
     _seed_lawyer_profile(db_session)
-    db_session.add(Workspace(id="workspace-2", name="Case B", owner_id="user-1", workspace_type="case"))
+    db_session.add(
+        Workspace(id="workspace-2", name="Case B", owner_id="user-1", workspace_type="case")
+    )
     db_session.add(
         WorkspaceMember(
             id="member-2",
@@ -409,7 +424,9 @@ def test_telegram_workspace_selection_cancelled_by_main_menu(
 ) -> None:
     _seed_workspace(db_session)
     _seed_lawyer_profile(db_session)
-    db_session.add(Workspace(id="workspace-2", name="Case B", owner_id="user-1", workspace_type="case"))
+    db_session.add(
+        Workspace(id="workspace-2", name="Case B", owner_id="user-1", workspace_type="case")
+    )
     db_session.add(
         WorkspaceMember(
             id="member-2",
@@ -428,6 +445,7 @@ def test_telegram_workspace_selection_cancelled_by_main_menu(
     assert "workspace_selection" not in binding.metadata_json
     assert "onboarding_state" not in binding.metadata_json
 
+
 def test_telegram_client_profile_onboarding_creates_active_client(
     client: TestClient,
     db_session: Session,
@@ -441,10 +459,13 @@ def test_telegram_client_profile_onboarding_creates_active_client(
 
     assert "роль клієнта" in _post_telegram_text(client, "ТОВ Приклад")["reply_text"]
     assert "інтереси клієнта" in _post_telegram_text(client, "позивач")["reply_text"]
-    assert "ризикові побажання" in _post_telegram_text(
-        client,
-        "Стягнути борг і зберегти партнерські відносини.",
-    )["reply_text"]
+    assert (
+        "ризикові побажання"
+        in _post_telegram_text(
+            client,
+            "Стягнути борг і зберегти партнерські відносини.",
+        )["reply_text"]
+    )
     assert "стиль комунікації" in _post_telegram_text(client, "Обережна позиція.")["reply_text"]
 
     done_payload = _post_telegram_text(client, "Короткий executive summary.")
@@ -614,9 +635,10 @@ def test_telegram_edit_active_client_profile_updates_existing_profile(
 
     assert "роль клієнта" in _post_telegram_text(client, "ТОВ Новий")["reply_text"]
     assert "інтереси клієнта" in _post_telegram_text(client, "позивач")["reply_text"]
-    assert "ризикові побажання" in _post_telegram_text(client, "Стягнути заборгованість.")[
-        "reply_text"
-    ]
+    assert (
+        "ризикові побажання"
+        in _post_telegram_text(client, "Стягнути заборгованість.")["reply_text"]
+    )
     assert "стиль комунікації" in _post_telegram_text(client, "Готовність до суду.")["reply_text"]
     done_payload = _post_telegram_text(client, "Детальний аналіз з ризиками.")
 
@@ -658,8 +680,6 @@ def test_telegram_delete_active_client_profile_clears_selection(
     assert db_session.query(ClientProfile).count() == 0
     binding = db_session.query(N8nTelegramBinding).one()
     assert "active_client_profile_id" not in binding.metadata_json
-
-
 
 
 def test_telegram_batch_start_processing_requires_review_confirmation(
@@ -733,6 +753,7 @@ def test_telegram_batch_start_processing_rejects_empty_package(
     assert "Пакет порожній" in payload["reply_text"]
     assert db_session.query(N8nIntakeItem).count() == 0
 
+
 def test_telegram_batch_materials_are_listed_with_numbers(
     client: TestClient,
     db_session: Session,
@@ -754,8 +775,7 @@ def test_telegram_batch_materials_are_listed_with_numbers(
                     "file_id": "telegram-file-1",
                     "file_name": "contract.docx",
                     "mime_type": (
-                        "application/vnd.openxmlformats-officedocument."
-                        "wordprocessingml.document"
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     ),
                 },
                 {
@@ -825,6 +845,7 @@ def test_telegram_batch_material_can_be_removed_by_number(
     assert "1. contract.docx" in payload["reply_text"]
     assert db_session.query(N8nIntakeItem).count() == 1
     assert db_session.query(N8nIntakeItem).one().file_name == "contract.docx"
+
 
 def test_inactive_telegram_binding_is_ignored(
     client: TestClient,
@@ -913,8 +934,7 @@ class FakeVectorSearchService:
                 workspace_id=command.workspace_id,
                 chunk_index=1,
                 chunk_text=(
-                    "Закон України про публічні закупівлі, державного замовника "
-                    "і державне майно."
+                    "Закон України про публічні закупівлі, державного замовника і державне майно."
                 ),
                 score=0.91,
             ),
@@ -959,7 +979,7 @@ class ClauseDraftingLegalAnalysisService(FakeLegalAnalysisService):
                 "| після п. 2.3 | 2.4 | уточнити результат робіт |\n\n"
                 "3. Готові формулювання пунктів\n"
                 "**Пункт 2.4. Результат робіт**\n"
-                "\"Виконавець зобов'язаний передати Замовнику результат робіт.\"\n\n"
+                '"Виконавець зобов\'язаний передати Замовнику результат робіт."\n\n'
                 "4. Таблиця ризиків\n"
                 "| Проблема в договорі | Ризик для клієнта | Як запропонований пункт це вирішує |\n"
                 "|---|---|---|\n"
@@ -1054,7 +1074,7 @@ def test_contract_clause_drafting_sanitizer_removes_empty_items_fragments_and_re
             "- Уточнити порядок приймання робіт.\n"
             "Правова підстава: фрагмент 1.\n"
             "**Пункт 4.3. Приймання робіт**\n"
-            "\"Замовник має право перевірити результат робіт.\""
+            '"Замовник має право перевірити результат робіт."'
         ),
     )
 
@@ -1082,6 +1102,7 @@ def test_contract_clause_drafting_incomplete_check_requires_ready_clauses(
         "| Проблема в договорі | Ризик для клієнта | Як запропонований пункт це вирішує |",
         "contract_clause_drafting",
     )
+
 
 def test_telegram_continuation_note_waits_for_next_attachment(
     client: TestClient,
@@ -1123,8 +1144,7 @@ def test_telegram_continuation_note_waits_for_next_attachment(
                     "file_id": "telegram-file-2",
                     "file_name": "contract.docx",
                     "mime_type": (
-                        "application/vnd.openxmlformats-officedocument."
-                        "wordprocessingml.document"
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     ),
                 }
             ],
@@ -1177,6 +1197,7 @@ def test_incomplete_llm_answer_is_not_marked_processed(db_session: Session) -> N
     assert "неповну відповідь" in response.message
     db_session.refresh(package)
     assert package.metadata_json["llm_answer_raw"] == "1"
+
 
 def test_contract_followup_routes_search_to_document_facts_and_filters_sources(
     db_session: Session,
@@ -1240,9 +1261,9 @@ def test_contract_followup_routes_search_to_document_facts_and_filters_sources(
     ]
     db_session.refresh(package)
     assert (
-        package.metadata_json["processing_timings"]["query_route"]
-        == "contract_document_followup"
+        package.metadata_json["processing_timings"]["query_route"] == "contract_document_followup"
     )
+
 
 def test_contract_clause_drafting_mode_activates_for_numbered_clause_request(
     db_session: Session,
@@ -1290,9 +1311,9 @@ def test_contract_clause_drafting_mode_activates_for_numbered_clause_request(
     assert "| Куди вставити | Новий пункт | Мета |" in response.answer
     db_session.refresh(package)
     assert (
-        package.metadata_json["processing_timings"]["response_mode"]
-        == "contract_clause_drafting"
+        package.metadata_json["processing_timings"]["response_mode"] == "contract_clause_drafting"
     )
+
 
 def test_telegram_batch_menu_keeps_materials_pending(
     client: TestClient,
@@ -1390,7 +1411,9 @@ def test_telegram_followup_uses_last_processed_document_context(
         .filter(N8nIntakePackage.id != "previous-contract-package")
         .one()
     )
-    assert current_package.metadata_json["followup_source_package_id"] == "previous-contract-package"
+    assert (
+        current_package.metadata_json["followup_source_package_id"] == "previous-contract-package"
+    )
 
 
 def test_telegram_followup_resolves_previous_followup_to_original_document(
@@ -1461,13 +1484,13 @@ def test_telegram_followup_resolves_previous_followup_to_original_document(
     current_package = (
         db_session.query(N8nIntakePackage)
         .filter(
-            N8nIntakePackage.id.notin_(
-                ["original-contract-package", "previous-followup-package"]
-            )
+            N8nIntakePackage.id.notin_(["original-contract-package", "previous-followup-package"])
         )
         .one()
     )
-    assert current_package.metadata_json["followup_source_package_id"] == "original-contract-package"
+    assert (
+        current_package.metadata_json["followup_source_package_id"] == "original-contract-package"
+    )
 
 
 def test_start_package_processing_can_return_ollama_answer(
@@ -1486,7 +1509,9 @@ def test_start_package_processing_can_return_ollama_answer(
         question="Проаналізуй ризики",
     )
     db_session.add(package)
-    db_session.add(N8nIntakeItem(package_id="package-llm", item_type="text", text="Є договір поставки."))
+    db_session.add(
+        N8nIntakeItem(package_id="package-llm", item_type="text", text="Є договір поставки.")
+    )
     db_session.commit()
     fake_llm = FakeLegalAnalysisService()
     caplog.set_level(logging.INFO, logger="app.services.n8n_integration_service")
@@ -1559,7 +1584,11 @@ def test_start_package_processing_uses_active_telegram_client_when_not_explicit(
         question="Проаналізуй ризики",
     )
     db_session.add(package)
-    db_session.add(N8nIntakeItem(package_id="package-active-client", item_type="text", text="Є спір щодо поставки."))
+    db_session.add(
+        N8nIntakeItem(
+            package_id="package-active-client", item_type="text", text="Є спір щодо поставки."
+        )
+    )
     db_session.commit()
     fake_llm = FakeLegalAnalysisService()
 
@@ -1634,7 +1663,6 @@ def test_attach_extracted_text_indexes_telegram_attachment(
     assert db_session.query(DocumentChunk).filter_by(document_id=document.id).count() == 1
 
 
-
 def test_attach_extracted_text_queues_auto_processing_without_blocking(
     client: TestClient,
     db_session: Session,
@@ -1692,7 +1720,6 @@ def test_attach_extracted_text_queues_auto_processing_without_blocking(
     db_session.refresh(package)
     assert "auto_process_after_extraction" not in package.metadata_json
     assert package.metadata_json["analysis_requested_after_extraction"] is True
-
 
 
 def test_attach_extracted_text_can_auto_process_and_return_answer(
@@ -1923,3 +1950,157 @@ def test_reembed_missing_chunks_endpoint_embeds_new_chunks(
     chunk = db_session.get(DocumentChunk, "chunk-reembed")
     assert chunk is not None
     assert chunk.embedding is not None
+
+
+def test_official_source_candidate_endpoint_returns_stale_official_sources(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    db_session.add(
+        LegalSource(
+            id="legal-source-rada",
+            source_type="law",
+            source_name="Закон України про тест",
+            source_url="https://zakon.rada.gov.ua/laws/show/123-20",
+            document_number="123-20",
+            validity_status="current",
+        )
+    )
+    db_session.add(
+        LegalSource(
+            id="legal-source-blog",
+            source_type="law",
+            source_name="Unofficial blog",
+            source_url="https://example-law-blog.test/post",
+            validity_status="current",
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/n8n/legal-sources/verification-candidates",
+        json={"workspace_id": "workspace-1", "user_id": "user-1", "limit": 10},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert [item["legal_source_id"] for item in payload["candidates"]] == ["legal-source-rada"]
+    assert payload["candidates"][0]["source_domain"] == "zakon.rada.gov.ua"
+
+
+def test_official_source_verification_endpoint_records_metadata_without_full_text(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    db_session.add(
+        LegalSource(
+            id="legal-source-verify",
+            source_type="supreme_court_position",
+            source_name="Огляд Верховного Суду",
+            source_url="https://supreme.court.gov.ua/supreme/pres-centr/news/",
+            validity_status="current",
+            full_text="Canonical text stays on the legal source, not in verification metadata.",
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/n8n/legal-sources/verify-official-sources",
+        json={
+            "workspace_id": "workspace-1",
+            "user_id": "user-1",
+            "verifications": [
+                {
+                    "legal_source_id": "legal-source-verify",
+                    "source_url": "https://supreme.court.gov.ua/supreme/pres-centr/news/",
+                    "source_domain": "supreme.court.gov.ua",
+                    "source_kind": "court_practice",
+                    "allowlist_status": "allowed",
+                    "verification_status": "verified",
+                    "http_status": 200,
+                    "final_url": "https://supreme.court.gov.ua/supreme/pres-centr/news/",
+                    "content_type": "text/html; charset=utf-8",
+                    "confidence": "high",
+                    "evidence_summary": "Official source URL is reachable.",
+                    "verification_payload": {"workflow": "JUR_Official_Source_Verification"},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed"] == 1
+    assert payload["verified"] == 1
+    verification = db_session.query(LegalSourceVerification).one()
+    assert verification.legal_source_id == "legal-source-verify"
+    assert verification.source_kind == "court_practice"
+    assert verification.verification_status == "verified"
+    assert verification.http_status == 200
+    assert "full_text" not in (verification.verification_payload or {})
+    source = db_session.get(LegalSource, "legal-source-verify")
+    assert source is not None
+    assert source.last_checked_at is not None
+
+
+def test_controlled_official_source_search_plan_allows_only_triggered_search(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+
+    response = client.post(
+        "/n8n/official-source-search/plan",
+        json={
+            "workspace_id": "workspace-1",
+            "user_id": "user-1",
+            "query": "стаття 625 ЦК України",
+            "trigger_reason": "low_rag_confidence",
+            "rag_confidence": 0.2,
+            "candidate_urls": [
+                "https://zakon.rada.gov.ua/laws/show/435-15",
+                "https://legal-blog.test/commentary",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["search_allowed"] is True
+    assert payload["site_queries"]
+    assert all(query.startswith("site:") for query in payload["site_queries"])
+    assert payload["accepted_urls"][0]["domain"] == "zakon.rada.gov.ua"
+    assert payload["rejected_urls"][0]["reason"] in {
+        "blocked_source_hint",
+        "domain_not_allowlisted",
+    }
+    run = db_session.query(OfficialSourceSearchRun).one()
+    assert run.search_allowed is True
+    assert run.accepted_urls[0]["url"] == "https://zakon.rada.gov.ua/laws/show/435-15"
+
+
+def test_controlled_official_source_search_plan_blocks_untriggered_search(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+
+    response = client.post(
+        "/n8n/official-source-search/plan",
+        json={
+            "workspace_id": "workspace-1",
+            "user_id": "user-1",
+            "query": "загальний пошук",
+            "trigger_reason": "manual_review",
+            "rag_confidence": 0.9,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["search_allowed"] is False
+    assert payload["site_queries"] == []
+    assert db_session.query(OfficialSourceSearchRun).one().search_allowed is False

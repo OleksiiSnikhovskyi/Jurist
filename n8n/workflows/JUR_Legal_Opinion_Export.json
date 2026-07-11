@@ -1,0 +1,47 @@
+{
+  "name": "JUR_Legal_Opinion_Export",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "jur-export-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-500, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const opinionId = $json.legal_opinion_id || $env.JUR_EXPORT_LEGAL_OPINION_ID || '';\nreturn [{ json: { opinion_id: opinionId, user_id: $json.user_id || $env.JUR_KB_USER_ID || '00000000-0000-0000-0000-000000000001', export_format: ($json.export_format || 'docx').toLowerCase() } }];"
+      },
+      "id": "jur-build-export-request",
+      "name": "Build Export Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-240, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.JUR_API_BASE_URL + '/legal-opinions/' + $json.opinion_id + '/export'}}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { user_id: $json.user_id, export_format: $json.export_format } }}",
+        "options": {"timeout": 180000}
+      },
+      "id": "jur-export-legal-opinion",
+      "name": "Export Legal Opinion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [20, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {"main": [[{"node": "Build Export Request", "type": "main", "index": 0}]]},
+    "Build Export Request": {"main": [[{"node": "Export Legal Opinion", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "pinData": {},
+  "active": false,
+  "versionId": "template"
+}

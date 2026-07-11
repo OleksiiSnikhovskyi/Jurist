@@ -5,8 +5,17 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.legal_opinion import LegalOpinion
-from app.schemas.legal_opinion_schema import LegalOpinionResponse, LegalOpinionReviewUpdate
+from app.schemas.legal_opinion_schema import (
+    LegalOpinionExportRequest,
+    LegalOpinionExportResponse,
+    LegalOpinionResponse,
+    LegalOpinionReviewUpdate,
+)
 from app.services.access_control import AccessControlService, AccessDeniedError, WorkspacePermission
+from app.services.legal_opinion_export_service import (
+    LegalOpinionExportError,
+    LegalOpinionExportService,
+)
 
 
 router = APIRouter(prefix="/legal-opinions", tags=["legal-opinions"])
@@ -87,3 +96,24 @@ def update_legal_opinion_review(
     db.commit()
     db.refresh(opinion)
     return opinion
+
+
+@router.post("/{opinion_id}/export", response_model=LegalOpinionExportResponse)
+def export_legal_opinion(
+    opinion_id: str,
+    request: LegalOpinionExportRequest,
+    db: Session = Depends(get_db),
+) -> LegalOpinionExportResponse:
+    opinion = _get_opinion_or_404(db, opinion_id)
+    try:
+        return LegalOpinionExportService(db).export_opinion(
+            opinion=opinion,
+            user_id=request.user_id,
+            export_format=request.export_format,
+        )
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except LegalOpinionExportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc

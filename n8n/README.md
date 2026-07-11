@@ -5,6 +5,9 @@ Planned workflow templates:
 - `workflows/JUR_Bot_Intake_Queue.json`
 - `workflows/JUR_Document_Processing_Start.json`
 - `workflows/JUR_Obsidian_Vault_Sync.json`
+- `workflows/JUR_Official_Source_Verification.json`
+- `workflows/JUR_Controlled_Official_Source_Search.json`
+- `workflows/JUR_Legal_Opinion_Export.json`
 - `JUR_Document_Ingestion.json`
 - `JUR_Legal_Update_Monitoring.json`
 - `JUR_Case_Law_Indexing.json`
@@ -124,4 +127,34 @@ Imported into `https://n8n.csc-ua.tech` on 2026-06-13:
 
 `JUR_Bot_Intake_Queue` uses the n8n Telegram credential `PravnykAi`. The workflows are active, but production processing still requires `JUR_API_BASE_URL` to point to a reachable FastAPI deployment.
 
+## Official Source Verification
 
+`JUR_Official_Source_Verification` checks already-ingested `legal_sources` URLs from official domains and records verification metadata through FastAPI. It does not store fetched page text.
+
+- `POST /n8n/legal-sources/verification-candidates` requests stale official-source candidates.
+- HTTP Request nodes check source reachability.
+- `POST /n8n/legal-sources/verify-official-sources` persists metadata in `legal_source_verifications`.
+
+Runtime variables: `JUR_OFFICIAL_SOURCE_VERIFY_LIMIT` and `JUR_OFFICIAL_SOURCE_VERIFY_MAX_AGE_DAYS`.
+## Controlled Official Source Search
+
+`JUR_Controlled_Official_Source_Search` prepares a search plan for gap checks and freshness checks only. It calls `POST /n8n/official-source-search/plan`, which decides whether search is allowed from the supplied trigger metadata and returns `site:` queries restricted to official domains.
+
+Allowed triggers:
+
+- low RAG confidence;
+- current-validity checks;
+- exact legal or court-reference verification.
+
+The workflow must use only the returned official-domain site queries. News sites, private legal blogs, forums, and unofficial commentary are excluded by policy and by backend URL classification.
+
+## Legal Opinion Export
+
+`JUR_Legal_Opinion_Export` exports an existing legal opinion through `POST /legal-opinions/{opinion_id}/export`.
+
+Supported formats:
+
+- `docx` via `python-docx`;
+- `pdf` via LibreOffice/soffice conversion from the generated DOCX.
+
+Export records are stored as metadata in `legal_opinion_exports`. Generated files are written below `EXPORT_DIR/legal_opinions` and are not pushed back into the RAG corpus automatically.

@@ -1,0 +1,191 @@
+{
+  "name": "JUR_Official_Source_Verification",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "jur-official-verification-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-820, -80]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 5 * * *"
+            }
+          ]
+        }
+      },
+      "id": "jur-official-verification-schedule",
+      "name": "Daily Official Source Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-820, 120]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const workspaceId = $env.JUR_KB_WORKSPACE_ID || '00000000-0000-0000-0000-000000000101';\nconst userId = $env.JUR_KB_USER_ID || '00000000-0000-0000-0000-000000000001';\nreturn [{ json: { workspace_id: workspaceId, user_id: userId, limit: Number($env.JUR_OFFICIAL_SOURCE_VERIFY_LIMIT || 20), max_age_days: Number($env.JUR_OFFICIAL_SOURCE_VERIFY_MAX_AGE_DAYS || 7) } }];"
+      },
+      "id": "jur-build-candidate-request",
+      "name": "Build Candidate Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-560, 20]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.JUR_API_BASE_URL}}/n8n/legal-sources/verification-candidates",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {"timeout": 120000}
+      },
+      "id": "jur-fetch-verification-candidates",
+      "name": "Fetch Verification Candidates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-300, 20]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const response = $input.first().json || {};\nconst candidates = Array.isArray(response.candidates) ? response.candidates : [];\nif (!candidates.length) {\n  return [{ json: { no_candidates: true, workspace_id: $env.JUR_KB_WORKSPACE_ID || '00000000-0000-0000-0000-000000000101', user_id: $env.JUR_KB_USER_ID || '00000000-0000-0000-0000-000000000001' } }];\n}\nreturn candidates.map(candidate => ({ json: { ...candidate, no_candidates: false, workspace_id: $env.JUR_KB_WORKSPACE_ID || '00000000-0000-0000-0000-000000000101', user_id: $env.JUR_KB_USER_ID || '00000000-0000-0000-0000-000000000001' } }));"
+      },
+      "id": "jur-expand-candidates",
+      "name": "Expand Candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-40, 20]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {
+              "id": "has-candidates",
+              "leftValue": "={{$json.no_candidates}}",
+              "rightValue": false,
+              "operator": {"type": "boolean", "operation": "equals"}
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "jur-has-candidates",
+      "name": "Has Verification Candidates",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [220, 20]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "jur-verification-batches",
+      "name": "Split Verification Candidates",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [480, -80]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.source_url}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "User-Agent", "value": "JuristBot/0.1 OfficialSourceVerification (+https://github.com/OleksiiSnikhovskyi/Jurist)"},
+            {"name": "Accept", "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"fullResponse": true, "responseFormat": "text"}},
+          "timeout": 60000
+        }
+      },
+      "id": "jur-check-source-url",
+      "name": "Check Source URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 20],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const source = $('Split Verification Candidates').first().json;\nconst response = $input.first().json || {};\nconst statusCode = Number(response.statusCode || response.status || 0) || null;\nconst headers = response.headers || {};\nconst contentType = String(headers['content-type'] || headers['Content-Type'] || '').slice(0, 255);\nconst failed = Boolean(response.error || response.message?.includes('ECONN') || response.name === 'NodeApiError');\nlet verificationStatus = 'source_unavailable';\nlet confidence = 'medium';\nlet evidenceSummary = 'Official source domain is allowlisted, but the request failed.';\nif (statusCode >= 200 && statusCode < 400) {\n  verificationStatus = 'verified';\n  confidence = 'high';\n  evidenceSummary = 'Official source URL is reachable on an allowlisted domain.';\n} else if ([401, 403, 429].includes(statusCode)) {\n  verificationStatus = 'needs_review';\n  evidenceSummary = 'Official source server refused automated verification or rate-limited the request.';\n} else if ([404, 410].includes(statusCode)) {\n  verificationStatus = 'not_found';\n  evidenceSummary = 'Official source URL returned not found/gone.';\n} else if (failed) {\n  verificationStatus = 'source_unavailable';\n}\nreturn [{ json: {\n  workspace_id: source.workspace_id,\n  user_id: source.user_id,\n  verifications: [{\n    legal_source_id: source.legal_source_id,\n    source_url: source.source_url,\n    source_domain: source.source_domain,\n    source_kind: source.source_type === 'supreme_court_position' ? 'court_practice' : 'legislation',\n    allowlist_status: 'allowed',\n    verification_status: verificationStatus,\n    http_status: statusCode,\n    final_url: source.source_url,\n    content_type: contentType,\n    confidence,\n    checked_at: new Date().toISOString(),\n    checked_by: 'n8n',\n    evidence_summary: evidenceSummary,\n    verification_payload: { workflow: 'JUR_Official_Source_Verification', status_code: statusCode, source_name: source.source_name, document_number: source.document_number }\n  }]\n} }];"
+      },
+      "id": "jur-build-verification-result",
+      "name": "Build Verification Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 20]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.JUR_API_BASE_URL}}/n8n/legal-sources/verify-official-sources",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {"timeout": 120000}
+      },
+      "id": "jur-record-verification-result",
+      "name": "Record Verification Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1260, 20]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first().json;\nreturn [{ json: { workspace_id: item.workspace_id, user_id: item.user_id, verifications: [] } }];"
+      },
+      "id": "jur-build-empty-verification-summary",
+      "name": "Build Empty Verification Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.JUR_API_BASE_URL}}/n8n/legal-sources/verify-official-sources",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {"timeout": 120000}
+      },
+      "id": "jur-record-empty-verification-summary",
+      "name": "Record Empty Verification Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 180]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {"main": [[{"node": "Build Candidate Request", "type": "main", "index": 0}]]},
+    "Daily Official Source Schedule": {"main": [[{"node": "Build Candidate Request", "type": "main", "index": 0}]]},
+    "Build Candidate Request": {"main": [[{"node": "Fetch Verification Candidates", "type": "main", "index": 0}]]},
+    "Fetch Verification Candidates": {"main": [[{"node": "Expand Candidates", "type": "main", "index": 0}]]},
+    "Expand Candidates": {"main": [[{"node": "Has Verification Candidates", "type": "main", "index": 0}]]},
+    "Has Verification Candidates": {"main": [[{"node": "Split Verification Candidates", "type": "main", "index": 0}], [{"node": "Build Empty Verification Summary", "type": "main", "index": 0}]]},
+    "Split Verification Candidates": {"main": [[], [{"node": "Check Source URL", "type": "main", "index": 0}]]},
+    "Check Source URL": {"main": [[{"node": "Build Verification Result", "type": "main", "index": 0}]]},
+    "Build Verification Result": {"main": [[{"node": "Record Verification Result", "type": "main", "index": 0}]]},
+    "Record Verification Result": {"main": [[{"node": "Split Verification Candidates", "type": "main", "index": 0}]]},
+    "Build Empty Verification Summary": {"main": [[{"node": "Record Empty Verification Summary", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "pinData": {},
+  "active": false,
+  "versionId": "template"
+}

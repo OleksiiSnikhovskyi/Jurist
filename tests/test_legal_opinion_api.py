@@ -1,4 +1,6 @@
 from collections.abc import Generator
+import shutil
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -6,9 +8,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.config import get_settings
 from app.database import Base, get_db
 from app.main import app
 from app.models.legal_opinion import LegalOpinion
+from app.models.legal_opinion_export import LegalOpinionExport
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 
@@ -27,6 +31,7 @@ def db_session() -> Generator[Session, None, None]:
             Workspace.__table__,
             WorkspaceMember.__table__,
             LegalOpinion.__table__,
+            LegalOpinionExport.__table__,
         ],
     )
     SessionLocal = sessionmaker(bind=engine)
@@ -94,6 +99,82 @@ def test_legal_opinion_get_requires_workspace_membership(
     _seed_opinion(db_session)
 
     response = client.get("/legal-opinions/opinion-1?user_id=missing-user")
+
+    assert response.status_code == 403
+
+
+def test_legal_opinion_export_docx_records_metadata(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _seed_opinion(db_session)
+    monkeypatch.setenv("EXPORT_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    try:
+        response = client.post(
+            "/legal-opinions/opinion-1/export",
+            json={"user_id": "reviewer-1", "export_format": "docx"},
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["export_format"] == "docx"
+    assert payload["content_type"].endswith("wordprocessingml.document")
+    assert payload["file_size"] > 0
+    assert Path(payload["file_path"]).exists()
+    export = db_session.query(LegalOpinionExport).one()
+    assert export.legal_opinion_id == "opinion-1"
+    assert export.exported_by == "reviewer-1"
+    assert export.export_format == "docx"
+
+
+def test_legal_opinion_export_pdf_records_metadata(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    if not (shutil.which("soffice") or shutil.which("soffice.com") or shutil.which("libreoffice")):
+        pytest.skip("LibreOffice/soffice is not available")
+    _seed_opinion(db_session)
+    monkeypatch.setenv("EXPORT_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    try:
+        response = client.post(
+            "/legal-opinions/opinion-1/export",
+            json={"user_id": "reviewer-1", "export_format": "pdf"},
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["export_format"] == "pdf"
+    assert payload["content_type"] == "application/pdf"
+    assert payload["file_size"] > 0
+    assert Path(payload["file_path"]).exists()
+    export = db_session.query(LegalOpinionExport).one()
+    assert export.export_format == "pdf"
+
+
+def test_legal_opinion_export_rejects_unauthorized_user(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _seed_opinion(db_session)
+
+    response = client.post(
+        "/legal-opinions/opinion-1/export",
+        json={"user_id": "missing-user", "export_format": "docx"},
+    )
 
     assert response.status_code == 403
 

@@ -24,9 +24,22 @@ OFFICIAL_DOMAINS: frozenset[str] = frozenset(
         "court.gov.ua",
         "supreme.court.gov.ua",
         "kmu.gov.ua",
+        "rada.gov.ua",
+        "president.gov.ua",
         "me.gov.ua",
         "minjust.gov.ua",
+        "minfin.gov.ua",
+        "mof.gov.ua",
+        "mtu.gov.ua",
+        "mepr.gov.ua",
+        "mon.gov.ua",
+        "moz.gov.ua",
+        "mvs.gov.ua",
         "nerc.gov.ua",
+        "saee.gov.ua",
+        "derzhstat.gov.ua",
+        "e-construction.gov.ua",
+        "uas.gov.ua",
     }
 )
 

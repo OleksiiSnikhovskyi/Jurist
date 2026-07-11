@@ -10,6 +10,12 @@ from app.schemas.n8n_schema import (
     N8nLegalSourceUpsertResponse,
     N8nObsidianNoteRequest,
     N8nObsidianNoteResponse,
+    N8nOfficialSourceCandidateRequest,
+    N8nOfficialSourceCandidateResponse,
+    N8nOfficialSourceSearchPlanRequest,
+    N8nOfficialSourceSearchPlanResponse,
+    N8nOfficialSourceVerificationRequest,
+    N8nOfficialSourceVerificationResponse,
     N8nProcessPackageRequest,
     N8nProcessPackageResponse,
     N8nReembedMissingChunksRequest,
@@ -19,13 +25,13 @@ from app.schemas.n8n_schema import (
     TelegramIntakeEvent,
 )
 from app.services.access_control import AccessDeniedError
+from app.services.official_source_search_service import OfficialSourceSearchPlanner
 from app.services.n8n_integration_service import (
     IntakeItemNotFoundError,
     IntakePackageNotFoundError,
     LegalSourceValidationError,
     N8nIntegrationService,
 )
-
 
 router = APIRouter(prefix="/n8n", tags=["n8n"])
 
@@ -97,7 +103,49 @@ def upsert_legal_source(
     try:
         return N8nIntegrationService(db).upsert_legal_source(request)
     except LegalSourceValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post("/official-source-search/plan", response_model=N8nOfficialSourceSearchPlanResponse)
+def build_official_source_search_plan(
+    request: N8nOfficialSourceSearchPlanRequest,
+    db: Session = Depends(get_db),
+) -> N8nOfficialSourceSearchPlanResponse:
+    try:
+        return OfficialSourceSearchPlanner(db).build_plan(request)
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post(
+    "/legal-sources/verification-candidates",
+    response_model=N8nOfficialSourceCandidateResponse,
+)
+def list_official_source_verification_candidates(
+    request: N8nOfficialSourceCandidateRequest,
+    db: Session = Depends(get_db),
+) -> N8nOfficialSourceCandidateResponse:
+    try:
+        return N8nIntegrationService(db).list_official_source_verification_candidates(request)
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+@router.post(
+    "/legal-sources/verify-official-sources",
+    response_model=N8nOfficialSourceVerificationResponse,
+)
+def record_official_source_verifications(
+    request: N8nOfficialSourceVerificationRequest,
+    db: Session = Depends(get_db),
+) -> N8nOfficialSourceVerificationResponse:
+    try:
+        return N8nIntegrationService(db).record_official_source_verifications(request)
     except AccessDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 

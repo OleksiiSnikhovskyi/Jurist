@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://jur_user:jur_password@localhost:5433/jur_db"
     test_database_url: str = "sqlite+pysqlite:///:memory:"
     upload_dir: str = "uploads"
+    export_dir: str = "exports"
     embedding_provider: str = "deterministic"
     embedding_model: str = "local-hash-v1"
     embedding_base_url: str | None = None

@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 WORKFLOW_DIR = Path(__file__).resolve().parents[1] / "n8n" / "workflows"
 
 
@@ -59,7 +58,9 @@ def test_telegram_intake_template_has_required_actions() -> None:
 
 
 def test_obsidian_template_uses_batch_processing() -> None:
-    workflow = json.loads((WORKFLOW_DIR / "JUR_Obsidian_Vault_Sync.json").read_text(encoding="utf-8"))
+    workflow = json.loads(
+        (WORKFLOW_DIR / "JUR_Obsidian_Vault_Sync.json").read_text(encoding="utf-8")
+    )
     workflow_text = json.dumps(workflow, ensure_ascii=False)
     node_types = {node["type"] for node in workflow["nodes"]}
 
@@ -72,8 +73,11 @@ def test_obsidian_template_uses_batch_processing() -> None:
     assert "document_number" in workflow_text
     assert "source_url" in workflow_text
 
+
 def test_rada_qwen_template_syncs_official_sources_through_api() -> None:
-    workflow = json.loads((WORKFLOW_DIR / "JUR_Rada_Law_Sync_Qwen.json").read_text(encoding="utf-8"))
+    workflow = json.loads(
+        (WORKFLOW_DIR / "JUR_Rada_Law_Sync_Qwen.json").read_text(encoding="utf-8")
+    )
     workflow_text = json.dumps(workflow, ensure_ascii=False)
     node_types = {node["type"] for node in workflow["nodes"]}
 
@@ -99,3 +103,54 @@ def test_rada_qwen_template_syncs_official_sources_through_api() -> None:
     assert "new URL(" not in workflow_text
     assert "$helpers" not in workflow_text
     assert "source_type: source.source_type" in workflow_text
+
+
+def test_official_source_verification_template_uses_api_and_official_domains() -> None:
+    workflow = json.loads(
+        (WORKFLOW_DIR / "JUR_Official_Source_Verification.json").read_text(encoding="utf-8")
+    )
+    workflow_text = json.dumps(workflow, ensure_ascii=False)
+    node_types = {node["type"] for node in workflow["nodes"]}
+
+    assert "n8n-nodes-base.scheduleTrigger" in node_types
+    assert "n8n-nodes-base.httpRequest" in node_types
+    assert "n8n-nodes-base.splitInBatches" in node_types
+    assert "/n8n/legal-sources/verification-candidates" in workflow_text
+    assert "/n8n/legal-sources/verify-official-sources" in workflow_text
+    assert "JUR_OFFICIAL_SOURCE_VERIFY_LIMIT" in workflow_text
+    assert "JUR_Official_Source_Verification" in workflow_text
+    assert "new URL(" not in workflow_text
+    assert "$helpers" not in workflow_text
+
+
+def test_controlled_official_source_search_template_uses_plan_endpoint() -> None:
+    workflow = json.loads(
+        (WORKFLOW_DIR / "JUR_Controlled_Official_Source_Search.json").read_text(encoding="utf-8")
+    )
+    workflow_text = json.dumps(workflow, ensure_ascii=False)
+    node_types = {node["type"] for node in workflow["nodes"]}
+
+    assert "n8n-nodes-base.manualTrigger" in node_types
+    assert "n8n-nodes-base.code" in node_types
+    assert "n8n-nodes-base.httpRequest" in node_types
+    assert "n8n-nodes-base.if" in node_types
+    assert "/n8n/official-source-search/plan" in workflow_text
+    assert "low_rag_confidence" in workflow_text
+    assert "candidate_urls" in workflow_text
+    assert "search_allowed" in workflow_text
+
+
+def test_legal_opinion_export_template_uses_export_endpoint() -> None:
+    workflow = json.loads(
+        (WORKFLOW_DIR / "JUR_Legal_Opinion_Export.json").read_text(encoding="utf-8")
+    )
+    workflow_text = json.dumps(workflow, ensure_ascii=False)
+    node_types = {node["type"] for node in workflow["nodes"]}
+
+    assert "n8n-nodes-base.manualTrigger" in node_types
+    assert "n8n-nodes-base.code" in node_types
+    assert "n8n-nodes-base.httpRequest" in node_types
+    assert "/legal-opinions/" in workflow_text
+    assert "/export" in workflow_text
+    assert "export_format" in workflow_text
+    assert "JUR_EXPORT_LEGAL_OPINION_ID" in workflow_text

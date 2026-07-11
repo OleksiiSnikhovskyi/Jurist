@@ -161,6 +161,93 @@ class N8nLegalSourceUpsertResponse(BaseModel):
     message: str
 
 
+class OfficialSourceSearchUrlDecision(BaseModel):
+    url: str
+    domain: str | None = None
+    reason: str
+
+
+class N8nOfficialSourceSearchPlanRequest(BaseModel):
+    workspace_id: str
+    user_id: str
+    query: str = Field(min_length=1)
+    trigger_reason: str = "manual_review"
+    rag_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    requires_current_validity: bool = False
+    exact_references: list[str] = Field(default_factory=list)
+    candidate_urls: list[str] = Field(default_factory=list)
+
+
+class N8nOfficialSourceSearchPlanResponse(BaseModel):
+    ok: bool
+    search_allowed: bool
+    search_run_id: str
+    trigger_reason: str
+    allowed_domains: list[str]
+    site_queries: list[str]
+    accepted_urls: list[OfficialSourceSearchUrlDecision]
+    rejected_urls: list[OfficialSourceSearchUrlDecision]
+    message: str
+
+
+class N8nOfficialSourceCandidateRequest(BaseModel):
+    workspace_id: str
+    user_id: str
+    limit: int = Field(default=20, ge=1, le=100)
+    max_age_days: int = Field(default=7, ge=0, le=90)
+
+
+class N8nOfficialSourceCandidate(BaseModel):
+    legal_source_id: str
+    source_name: str
+    source_type: str
+    source_url: str
+    source_domain: str | None = None
+    document_number: str | None = None
+    validity_status: str | None = None
+    last_checked_at: datetime | None = None
+
+
+class N8nOfficialSourceCandidateResponse(BaseModel):
+    ok: bool
+    candidates: list[N8nOfficialSourceCandidate]
+    message: str
+
+
+class N8nOfficialSourceVerificationItem(BaseModel):
+    legal_source_id: str | None = None
+    source_url: str
+    source_domain: str | None = None
+    source_kind: str = "legislation"
+    allowlist_status: str
+    verification_status: str
+    http_status: int | None = None
+    final_url: str | None = None
+    content_type: str | None = None
+    confidence: str = "medium"
+    checked_at: datetime | None = None
+    checked_by: str = "n8n"
+    evidence_summary: str | None = None
+    verification_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class N8nOfficialSourceVerificationRequest(BaseModel):
+    workspace_id: str
+    user_id: str
+    verifications: list[N8nOfficialSourceVerificationItem] = Field(default_factory=list)
+
+
+class N8nOfficialSourceVerificationResponse(BaseModel):
+    ok: bool
+    processed: int
+    verified: int
+    needs_review: int
+    unavailable: int
+    blocked: int
+    invalid: int
+    message: str
+
+
 class N8nReembedMissingChunksRequest(BaseModel):
     batch_size: int = 16
     limit: int = 500

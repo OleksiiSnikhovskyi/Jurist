@@ -127,12 +127,12 @@
 - [x] Connect package processing to document extraction, chunking, vector search, and agents for Telegram-extracted documents and voice transcripts.
 - [x] Store generated answers in `legal_opinions`.
 - [x] Add lawyer review/approval state for generated opinions.
-- [ ] Add official-source verification workflow for legislation and court practice.
-- [ ] Add controlled official-source web search stage for gaps and freshness checks only.
+- [x] Add official-source verification workflow for legislation and court practice.
+- [x] Add controlled official-source web search stage for gaps and freshness checks only.
   - Restrict search to official domains such as `zakon.rada.gov.ua`, `court.gov.ua`, `supreme.court.gov.ua`, `kmu.gov.ua`, ministries, NERC, DBN/DSTU sources.
   - Trigger it only when RAG confidence is low, the answer needs current validity, or exact legal/court references must be verified.
   - Exclude news sites, private legal blogs, forums, and unofficial commentary.
-- [ ] Add export of final answers to DOCX/PDF.
+- [x] Add export of final answers to DOCX/PDF.
 
 ## Stage 10: Production Hardening
 
