@@ -144,9 +144,9 @@
 - [x] Replace deterministic embeddings configuration with a production Ollama embedding provider.
 ## Stage 11: Evaluation and QA Harness
 
-- [ ] Add local legal-answer evaluation dataset across multiple domains.
-- [ ] Add rule-based answer quality scoring for structure, official-source grounding, required terms, and forbidden claims.
-- [ ] Add evaluation report output in Markdown/CSV for offline review and Kaggle-style analysis.
+- [x] Add local legal-answer evaluation dataset across multiple domains.
+- [x] Add rule-based answer quality scoring for structure, official-source grounding, required terms, and forbidden claims.
+- [x] Add evaluation report output in Markdown/CSV for offline review and Kaggle-style analysis.
 - [ ] Add optional LLM judge for legal relevance, completeness, hallucination risk, and answer form.
 - [ ] Add n8n/Telegram smoke tests that send controlled questions and capture bot answers.
 - [ ] Define quality thresholds for release readiness and lawyer review escalation.
