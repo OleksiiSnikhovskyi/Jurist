@@ -143,6 +143,67 @@ def _post_telegram_text(
     return response.json()
 
 
+def test_bot_upload_payload_size_limit_returns_413(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("N8N_BOT_PAYLOAD_LIMIT_BYTES", "80")
+    get_settings.cache_clear()
+
+    try:
+        response = client.post(
+            "/n8n/intake/telegram",
+            json={
+                "chat_id": "100",
+                "telegram_user_id": "200",
+                "text": "x" * 500,
+                "action": "free_text",
+            },
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 413
+    assert response.json()["limit_bytes"] == 80
+
+
+def test_bot_upload_rate_limit_returns_429(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("N8N_BOT_RATE_LIMIT_REQUESTS", "1")
+    monkeypatch.setenv("N8N_BOT_RATE_LIMIT_WINDOW_SECONDS", "60")
+    get_settings.cache_clear()
+
+    try:
+        first = client.post(
+            "/n8n/intake/telegram",
+            headers={"X-Forwarded-For": "203.0.113.10"},
+            json={
+                "chat_id": "100",
+                "telegram_user_id": "200",
+                "text": "Питання",
+                "action": "free_text",
+            },
+        )
+        second = client.post(
+            "/n8n/intake/telegram",
+            headers={"X-Forwarded-For": "203.0.113.10"},
+            json={
+                "chat_id": "100",
+                "telegram_user_id": "200",
+                "text": "Ще питання",
+                "action": "free_text",
+            },
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.headers["Retry-After"]
+
+
 def test_n8n_endpoints_require_api_key_when_configured(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

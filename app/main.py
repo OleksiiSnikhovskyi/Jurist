@@ -9,6 +9,7 @@ from app.api.routes_lawyer_profiles import router as lawyer_profiles_router
 from app.api.routes_legal_opinions import router as legal_opinions_router
 from app.api.routes_n8n import router as n8n_router
 from app.config import get_settings
+from app.middleware_bot_upload_protection import BotUploadProtectionMiddleware
 
 
 def create_app() -> FastAPI:
@@ -19,6 +20,7 @@ def create_app() -> FastAPI:
         description="Source-aware Ukrainian legal AI assistant for lawyer review workflows.",
     )
 
+    app.add_middleware(BotUploadProtectionMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -38,4 +40,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

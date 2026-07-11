@@ -60,3 +60,4 @@ Obsidian notes are treated as private workspace knowledge. Sync only explicitly 
 ## Agent Output Safety
 
 Specialized agents return source references and warnings. Contract review, legal research, and quality control responses are preliminary and must remain framed as lawyer-review workflows. When source freshness is unknown, responses must warn that current legislation and court practice require verification in official sources.
+Bot upload rate and payload limits are enforced before intake storage for `/n8n/intake/telegram` and `/n8n/intake/extracted-text`. Oversized payloads return `413`; enabled rate limits return `429` with `Retry-After`, reducing accidental retry storms and overly large OCR/transcription submissions.

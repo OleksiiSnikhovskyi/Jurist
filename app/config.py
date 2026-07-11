@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     export_dir: str = "exports"
     jur_n8n_api_key: str | None = None
     n8n_api_key: str | None = None
+    n8n_bot_payload_limit_bytes: int = 10 * 1024 * 1024
+    n8n_bot_rate_limit_requests: int = 0
+    n8n_bot_rate_limit_window_seconds: int = 60
     embedding_provider: str = "deterministic"
     embedding_model: str = "local-hash-v1"
     embedding_base_url: str | None = None

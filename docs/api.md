@@ -129,6 +129,10 @@ The endpoint stores the file in `UPLOAD_DIR`, creates a `documents` record, extr
 
 ## n8n Integration
 All `/n8n/...` endpoints are protected when `JUR_N8N_API_KEY` is configured in the Jurist API environment. In non-local runtimes, `N8N_API_KEY` is accepted as a compatibility fallback. n8n must send the token in `X-JUR-N8N-API-KEY`; `X-N8N-API-KEY` is accepted as a header compatibility fallback. Requests without a valid key receive `401` before workspace-level access checks run.
+Bot upload protection applies to `POST /n8n/intake/telegram` and `POST /n8n/intake/extracted-text`:
+
+- requests over `N8N_BOT_PAYLOAD_LIMIT_BYTES` return `413`;
+- when `N8N_BOT_RATE_LIMIT_REQUESTS` is greater than `0`, repeated upload requests from the same client/path within `N8N_BOT_RATE_LIMIT_WINDOW_SECONDS` return `429` with `Retry-After`.
 
 `POST /n8n/intake/telegram`
 
