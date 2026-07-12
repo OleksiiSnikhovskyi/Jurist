@@ -6,6 +6,7 @@ from scripts.run_telegram_smoke_eval import (
     TelegramSmokeResult,
     build_telegram_event,
     config_from_env,
+    load_env_file,
     main,
     select_cases,
     write_answers_json,
@@ -106,3 +107,113 @@ def test_dry_run_cli_writes_plan(tmp_path: Path, monkeypatch) -> None:
     plan = json.loads((tmp_path / "telegram_smoke_plan.json").read_text(encoding="utf-8"))
     assert len(plan) == 2
     assert {"case_id", "domain", "question", "expected_official_sources"} <= set(plan[0])
+
+
+def test_load_env_file_sets_missing_values(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / "smoke.env"
+    env_file.write_text(
+        "JUR_SMOKE_API_BASE_URL=https://jurist.example.test\n"
+        "JUR_SMOKE_TELEGRAM_CHAT_ID=100\n"
+        "JUR_SMOKE_TELEGRAM_USER_ID='200'\n"
+        "JUR_SMOKE_WORKSPACE_ID=workspace-1\n"
+        'JUR_SMOKE_USER_ID="user-1"\n',
+        encoding="utf-8",
+    )
+    for name in [
+        "JUR_SMOKE_API_BASE_URL",
+        "JUR_SMOKE_TELEGRAM_CHAT_ID",
+        "JUR_SMOKE_TELEGRAM_USER_ID",
+        "JUR_SMOKE_WORKSPACE_ID",
+        "JUR_SMOKE_USER_ID",
+    ]:
+        monkeypatch.delenv(name, raising=False)
+
+    load_env_file(env_file)
+    config = config_from_env(use_existing_binding=False, notify_telegram=False)
+
+    assert config.api_base_url == "https://jurist.example.test"
+    assert config.telegram_user_id == "200"
+    assert config.user_id == "user-1"
+
+
+def test_dry_run_cli_accepts_env_file(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / "smoke.env"
+    env_file.write_text("JUR_SMOKE_API_BASE_URL=https://jurist.example.test\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_telegram_smoke_eval.py",
+            "--dataset",
+            "tests/evals/legal_questions.json",
+            "--out-dir",
+            str(tmp_path / "reports"),
+            "--limit",
+            "1",
+            "--dry-run",
+            "--env-file",
+            str(env_file),
+        ],
+    )
+
+    exit_code = main()
+
+    assert exit_code == 0
+    assert (tmp_path / "reports" / "telegram_smoke_plan.json").exists()
+
+
+def test_live_cli_loads_env_file_before_config(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / "smoke.env"
+    env_file.write_text(
+        "JUR_SMOKE_API_BASE_URL=https://jurist.example.test\n"
+        "JUR_SMOKE_TELEGRAM_CHAT_ID=100\n"
+        "JUR_SMOKE_TELEGRAM_USER_ID=200\n"
+        "JUR_SMOKE_WORKSPACE_ID=workspace-1\n"
+        "JUR_SMOKE_USER_ID=user-1\n",
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "reports"
+    for name in [
+        "JUR_SMOKE_API_BASE_URL",
+        "JUR_SMOKE_TELEGRAM_CHAT_ID",
+        "JUR_SMOKE_TELEGRAM_USER_ID",
+        "JUR_SMOKE_WORKSPACE_ID",
+        "JUR_SMOKE_USER_ID",
+    ]:
+        monkeypatch.delenv(name, raising=False)
+
+    def fake_run_live_smoke(cases, config):
+        assert config.api_base_url == "https://jurist.example.test"
+        assert config.workspace_id == "workspace-1"
+        return [
+            TelegramSmokeResult(
+                case_id=cases[0].id,
+                domain=cases[0].domain,
+                question=cases[0].question,
+                ok=True,
+                status="processed",
+                package_id="pkg-1",
+                reply_text="Висновок: тестова відповідь",
+            )
+        ]
+
+    monkeypatch.setattr("scripts.run_telegram_smoke_eval.run_live_smoke", fake_run_live_smoke)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_telegram_smoke_eval.py",
+            "--dataset",
+            "tests/evals/legal_questions.json",
+            "--out-dir",
+            str(out_dir),
+            "--limit",
+            "1",
+            "--env-file",
+            str(env_file),
+        ],
+    )
+
+    exit_code = main()
+
+    assert exit_code == 0
+    assert (out_dir / "answers.json").exists()
+    assert (out_dir / "telegram_smoke_results.csv").exists()

@@ -52,6 +52,20 @@ class TelegramSmokeResult:
     error: str | None = None
 
 
+def load_env_file(path: Path) -> None:
+    if not path.exists():
+        raise RuntimeError(f"Env file not found: {path}")
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def config_from_env(*, use_existing_binding: bool, notify_telegram: bool) -> TelegramSmokeConfig:
     api_base_url = os.getenv("JUR_SMOKE_API_BASE_URL") or os.getenv("JUR_API_BASE_URL")
     if not api_base_url:
@@ -263,6 +277,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--case-id", action="append", default=[])
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--env-file", type=Path, default=None)
     parser.add_argument("--use-existing-binding", action="store_true")
     parser.add_argument("--notify-telegram", action="store_true")
     return parser.parse_args()
@@ -270,6 +285,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.env_file:
+        try:
+            load_env_file(args.env_file)
+        except RuntimeError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+
     cases, _threshold = load_dataset(args.dataset)
     selected = select_cases(cases, args.case_id, args.limit)
     if args.dry_run:
