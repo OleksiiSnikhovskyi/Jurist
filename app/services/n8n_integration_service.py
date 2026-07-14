@@ -1088,6 +1088,18 @@ class N8nIntegrationService:
                 "скільки",
             )
         )
+        asks_traffic_rule_point = any(
+            marker in combined
+            for marker in (
+                "пункт правил",
+                "пункт пдр",
+                "пдр",
+                "правил дорожнього",
+                "правила дорожнього",
+                "який пункт",
+                "що порушив",
+            )
+        )
         mentions_impaired_driving = any(
             marker in combined
             for marker in (
@@ -1103,7 +1115,7 @@ class N8nIntegrationService:
                 "мотоблок",
             )
         )
-        if not asks_sanction or not mentions_impaired_driving:
+        if not (asks_sanction or asks_traffic_rule_point) or not mentions_impaired_driving:
             return []
 
         return [
@@ -1112,6 +1124,12 @@ class N8nIntegrationService:
                 chunk_index=130,
                 score=1.0,
                 text=(
+                    "Правила дорожнього руху України, затверджені постановою КМУ від 10.10.2001 № 1306, "
+                    "поточна редакція на zakon.rada.gov.ua станом на 14.07.2026: пункт 2.9, підпункт а, "
+                    "прямо забороняє водієві керувати транспортним засобом у стані алкогольного, наркотичного "
+                    "чи іншого сп'яніння або перебування під впливом лікарських препаратів, що знижують увагу "
+                    "та швидкість реакції. Якщо питання питає, який саме пункт ПДР порушено, відповідай прямо: "
+                    "п. 2.9 а ПДР України. "
                     "Кодекс України про адміністративні правопорушення, стаття 130, "
                     "чинний текст на zakon.rada.gov.ua станом на 14.07.2026. "
                     "Керування транспортним засобом у стані алкогольного, наркотичного чи іншого сп'яніння, "

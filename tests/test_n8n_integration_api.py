@@ -1465,6 +1465,53 @@ def test_impaired_driving_sanction_question_gets_known_kupap_130_context(
     assert timings["known_legal_fragment_count"] == 1
     assert "vector_search_error" in timings
 
+def test_impaired_driving_traffic_rule_question_gets_pdr_29a_context(
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    package = N8nIntakePackage(
+        id="package-pdr-29a",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        status="queued",
+    )
+    db_session.add(package)
+    db_session.add(
+        N8nIntakeItem(
+            package_id="package-pdr-29a",
+            item_type="text",
+            text="Олег Елець керував мотоблоком у стані алкогольного сп'яніння.",
+        )
+    )
+    db_session.commit()
+    fake_llm = FakeLegalAnalysisService()
+
+    response = N8nIntegrationService(
+        db_session,
+        legal_analysis_service=fake_llm,
+        vector_search_service=FailingVectorSearchService(),
+    ).start_package_processing(
+        request=N8nProcessPackageRequest(
+            package_id="package-pdr-29a",
+            requested_agent="legal_research",
+            question="який саме пункт правил дорожнього руху він порушив?",
+        )
+    )
+
+    assert response.status == "processed"
+    assert fake_llm.command is not None
+    assert fake_llm.command.source_fragments
+    fragment_text = fake_llm.command.source_fragments[0].text
+    assert "пункт 2.9, підпункт а" in fragment_text
+    assert "п. 2.9 а ПДР України" in fragment_text
+    assert "алкогольного" in fragment_text
+    db_session.refresh(package)
+    timings = package.metadata_json["processing_timings"]
+    assert timings["known_legal_fragment_count"] == 1
+
 def test_contract_clause_drafting_mode_activates_for_numbered_clause_request(
     db_session: Session,
 ) -> None:
