@@ -142,6 +142,7 @@
 - [x] Add backup/restore instructions for `jur_db`.
 - [x] Add CI workflow for tests and migration checks.
 - [x] Replace deterministic embeddings configuration with a production Ollama embedding provider.
+- [x] Add `gpt-4o-mini` OpenAI fallback for assistant answer generation when Miledy/Ollama request handling fails.
 ## Stage 11: Evaluation and QA Harness
 
 - [x] Add local legal-answer evaluation dataset across multiple domains.

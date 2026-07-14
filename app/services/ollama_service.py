@@ -44,12 +44,33 @@ class OllamaLegalAnalysisService:
         self.settings = settings or get_settings()
 
     def is_configured(self) -> bool:
-        return bool(self.settings.jur_ollama_base_url)
+        return bool(self.settings.jur_ollama_base_url) or self.is_openai_fallback_configured()
+
+    def is_openai_fallback_configured(self) -> bool:
+        return bool(self.settings.jur_openai_fallback_enabled and self._openai_api_key())
 
     def analyze_package(self, command: LegalPackageAnalysisCommand) -> LegalPackageAnalysisResult:
-        if not self.settings.jur_ollama_base_url:
-            raise OllamaNotConfiguredError("JUR_OLLAMA_BASE_URL is not configured")
+        if self.settings.jur_ollama_base_url:
+            try:
+                return self._analyze_with_ollama(command)
+            except OllamaRequestError as exc:
+                if not self.is_openai_fallback_configured():
+                    raise
+                try:
+                    return self._analyze_with_openai_fallback(command)
+                except OllamaRequestError as fallback_exc:
+                    raise OllamaRequestError(
+                        f"Ollama request failed: {exc}; OpenAI fallback failed: {fallback_exc}"
+                    ) from fallback_exc
 
+        if self.is_openai_fallback_configured():
+            return self._analyze_with_openai_fallback(command)
+
+        raise OllamaNotConfiguredError(
+            "Neither JUR_OLLAMA_BASE_URL nor OpenAI fallback credentials are configured"
+        )
+
+    def _analyze_with_ollama(self, command: LegalPackageAnalysisCommand) -> LegalPackageAnalysisResult:
         payload = {
             "model": self.settings.jur_ollama_model,
             "stream": False,
@@ -58,20 +79,40 @@ class OllamaLegalAnalysisService:
                 "num_ctx": self.settings.jur_ollama_num_ctx,
                 "num_predict": self.settings.jur_ollama_num_predict,
             },
-            "messages": [
-                {
-                    "role": "system",
-                    "content": build_system_prompt(command.lawyer_system_prompt),
-                },
-                {
-                    "role": "user",
-                    "content": build_user_prompt(command),
-                },
-            ],
+            "messages": self._messages_for_command(command),
         }
         response = self._post_json("/api/chat", payload)
         answer = extract_ollama_answer(response)
         return LegalPackageAnalysisResult(answer=answer, model=self.settings.jur_ollama_model)
+
+    def _analyze_with_openai_fallback(
+        self,
+        command: LegalPackageAnalysisCommand,
+    ) -> LegalPackageAnalysisResult:
+        payload = {
+            "model": self.settings.jur_openai_fallback_model,
+            "messages": self._messages_for_command(command),
+            "temperature": 0.2,
+            "max_tokens": self.settings.jur_openai_fallback_max_tokens,
+        }
+        response = self._post_openai_json("/chat/completions", payload)
+        answer = extract_openai_chat_answer(response)
+        return LegalPackageAnalysisResult(
+            answer=answer,
+            model=f"{self.settings.jur_openai_fallback_model} (openai-fallback)",
+        )
+
+    def _messages_for_command(self, command: LegalPackageAnalysisCommand) -> list[dict[str, str]]:
+        return [
+            {
+                "role": "system",
+                "content": build_system_prompt(command.lawyer_system_prompt),
+            },
+            {
+                "role": "user",
+                "content": build_user_prompt(command),
+            },
+        ]
 
     def _post_json(self, path: str, payload: dict) -> dict:
         base_url = self.settings.jur_ollama_base_url.rstrip("/")
@@ -86,6 +127,29 @@ class OllamaLegalAnalysisService:
                 return json.loads(response.read().decode("utf-8"))
         except (OSError, URLError, json.JSONDecodeError) as exc:
             raise OllamaRequestError(str(exc)) from exc
+
+    def _post_openai_json(self, path: str, payload: dict) -> dict:
+        api_key = self._openai_api_key()
+        if not api_key:
+            raise OllamaRequestError("OpenAI fallback API key is not configured")
+        base_url = self.settings.jur_openai_fallback_base_url.rstrip("/")
+        request = Request(
+            f"{base_url}{path}",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=self.settings.jur_openai_fallback_timeout_seconds) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (OSError, URLError, json.JSONDecodeError) as exc:
+            raise OllamaRequestError(str(exc)) from exc
+
+    def _openai_api_key(self) -> str | None:
+        return self.settings.jur_openai_api_key or self.settings.openai_api_key
 
 
 def build_system_prompt(lawyer_system_prompt: str) -> str:
@@ -221,6 +285,16 @@ def build_contract_clause_drafting_prompt(command: LegalPackageAnalysisCommand) 
     )
 
 
+def extract_openai_chat_answer(response: dict) -> str:
+    choices = response.get("choices")
+    if isinstance(choices, list) and choices:
+        first_choice = choices[0]
+        if isinstance(first_choice, dict):
+            message = first_choice.get("message")
+            if isinstance(message, dict) and isinstance(message.get("content"), str):
+                return message["content"].strip()
+    raise OllamaRequestError("OpenAI fallback response did not contain an answer")
+
 def extract_ollama_answer(response: dict) -> str:
     message = response.get("message")
     if isinstance(message, dict) and isinstance(message.get("content"), str):
@@ -228,4 +302,3 @@ def extract_ollama_answer(response: dict) -> str:
     if isinstance(response.get("response"), str):
         return response["response"].strip()
     raise OllamaRequestError("Ollama response did not contain an answer")
-

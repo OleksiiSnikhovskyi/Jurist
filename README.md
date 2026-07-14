@@ -32,7 +32,7 @@ pytest
 
 The production retrieval path is PostgreSQL/pgvector, not Python-side cosine scanning.
 
-- Answer generation model: Ollama `qwen3:8b` on Miledy with `JUR_OLLAMA_THINK=false`.
+- Answer generation model: Ollama `qwen3:8b` on Miledy with `JUR_OLLAMA_THINK=false`; optional OpenAI `gpt-4o-mini` fallback is used when Ollama/Miledy request handling fails.
 - Embedding model: Ollama `bge-m3` on Miledy via `/api/embed`.
 - Embedding dimensions: `1024`.
 - Chunk storage: `document_chunks.embedding vector(1024)`.
@@ -48,6 +48,19 @@ EMBEDDING_BASE_URL=http://100.100.209.24:11434
 EMBEDDING_TIMEOUT_SECONDS=120
 EMBEDDING_DIMENSIONS=1024
 ```
+
+Optional answer-generation fallback env:
+
+```bash
+JUR_OPENAI_API_KEY=<server-side-api-key>
+JUR_OPENAI_FALLBACK_ENABLED=true
+JUR_OPENAI_FALLBACK_BASE_URL=https://api.openai.com/v1
+JUR_OPENAI_FALLBACK_MODEL=gpt-4o-mini
+JUR_OPENAI_FALLBACK_TIMEOUT_SECONDS=120
+JUR_OPENAI_FALLBACK_MAX_TOKENS=3072
+```
+
+The fallback is implemented in the FastAPI answer service, so existing n8n/Telegram workflows continue calling the same `/n8n/...` endpoints. The fallback does not replace `bge-m3` embeddings and does not affect Rada ingestion/enrichment workflows that call Ollama directly.
 
 After applying the `20260620_0006` migration, old deterministic embeddings are cleared and chunks must be re-embedded:
 

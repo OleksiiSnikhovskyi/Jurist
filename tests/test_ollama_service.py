@@ -1,6 +1,9 @@
+import pytest
+
 from app.config import Settings
 from app.services.ollama_service import (
     LegalPackageAnalysisCommand,
+    OllamaRequestError,
     OllamaLegalAnalysisService,
     build_system_prompt,
     build_user_prompt,
@@ -58,6 +61,112 @@ def test_ollama_payload_disables_qwen_thinking_for_telegram_answers() -> None:
     assert service.payload["options"]["num_predict"] == 3072
 
 
+def test_ollama_service_falls_back_to_openai_when_ollama_fails() -> None:
+    class FallbackService(OllamaLegalAnalysisService):
+        def _post_json(self, path: str, payload: dict) -> dict:
+            self.ollama_path = path
+            self.ollama_payload = payload
+            raise OllamaRequestError("timed out")
+
+        def _post_openai_json(self, path: str, payload: dict) -> dict:
+            self.openai_path = path
+            self.openai_payload = payload
+            return {"choices": [{"message": {"content": "Fallback answer."}}]}
+
+    service = FallbackService(
+        Settings(
+            jur_ollama_base_url="http://miledy:11434",
+            jur_ollama_model="qwen3:8b",
+            jur_openai_api_key="test-key",
+            jur_openai_fallback_enabled=True,
+            jur_openai_fallback_model="gpt-4o-mini",
+        )
+    )
+
+    result = service.analyze_package(
+        LegalPackageAnalysisCommand(
+            question="Проаналізуй договір.",
+            package_text="Договір між двома комерційними компаніями.",
+            lawyer_system_prompt="Працюй як договірний юрист.",
+        )
+    )
+
+    assert result.answer == "Fallback answer."
+    assert result.model == "gpt-4o-mini (openai-fallback)"
+    assert service.ollama_path == "/api/chat"
+    assert service.ollama_payload["model"] == "qwen3:8b"
+    assert service.openai_path == "/chat/completions"
+    assert service.openai_payload["model"] == "gpt-4o-mini"
+    assert service.openai_payload["messages"][0]["role"] == "system"
+
+
+def test_ollama_service_reraises_ollama_error_without_openai_key() -> None:
+    class FailingService(OllamaLegalAnalysisService):
+        def _post_json(self, path: str, payload: dict) -> dict:
+            raise OllamaRequestError("timed out")
+
+    service = FailingService(
+        Settings(
+            jur_ollama_base_url="http://miledy:11434",
+            jur_ollama_model="qwen3:8b",
+            jur_openai_fallback_enabled=True,
+            jur_openai_api_key=None,
+            openai_api_key=None,
+        )
+    )
+
+    with pytest.raises(OllamaRequestError, match="timed out"):
+        service.analyze_package(
+            LegalPackageAnalysisCommand(
+                question="Проаналізуй договір.",
+                package_text="Договір між двома комерційними компаніями.",
+                lawyer_system_prompt="Працюй як договірний юрист.",
+            )
+        )
+
+
+def test_openai_fallback_requires_explicit_enable_flag() -> None:
+    service = OllamaLegalAnalysisService(
+        Settings(
+            jur_ollama_base_url=None,
+            jur_openai_api_key="test-key",
+            jur_openai_fallback_enabled=False,
+        )
+    )
+
+    assert service.is_configured() is False
+
+def test_openai_fallback_can_be_primary_when_ollama_is_not_configured() -> None:
+    class FallbackOnlyService(OllamaLegalAnalysisService):
+        def _post_openai_json(self, path: str, payload: dict) -> dict:
+            self.openai_path = path
+            self.openai_payload = payload
+            return {"choices": [{"message": {"content": "Fallback only."}}]}
+
+    service = FallbackOnlyService(
+        Settings(
+            jur_ollama_base_url=None,
+            jur_openai_api_key="test-key",
+            jur_openai_fallback_enabled=True,
+            jur_openai_fallback_model="gpt-4o-mini",
+        )
+    )
+
+    assert service.is_configured() is True
+
+    result = service.analyze_package(
+        LegalPackageAnalysisCommand(
+            question="Проаналізуй договір.",
+            package_text="Договір між двома комерційними компаніями.",
+            lawyer_system_prompt="Працюй як договірний юрист.",
+        )
+    )
+
+    assert result.answer == "Fallback only."
+    assert result.model == "gpt-4o-mini (openai-fallback)"
+    assert service.openai_path == "/chat/completions"
+
+
 def test_clause_drafting_prompt_uses_practical_contract_format() -> None:
     user_prompt = build_user_prompt(
         LegalPackageAnalysisCommand(
@@ -78,4 +187,3 @@ def test_clause_drafting_prompt_uses_practical_contract_format() -> None:
     assert "Нумерацію пропонуй тільки з урахуванням змісту відповідного розділу" in user_prompt
     assert "не формулюй категоричні обов'язки" in user_prompt.lower()
     assert "Підготуй відповідь у структурі" not in user_prompt
-

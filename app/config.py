@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     jur_ollama_think: bool = False
     jur_ollama_num_ctx: int = 16384
     jur_ollama_num_predict: int = 3072
+    jur_openai_api_key: str | None = None
+    openai_api_key: str | None = None
+    jur_openai_fallback_enabled: bool = False
+    jur_openai_fallback_base_url: str = "https://api.openai.com/v1"
+    jur_openai_fallback_model: str = "gpt-4o-mini"
+    jur_openai_fallback_timeout_seconds: int = 120
+    jur_openai_fallback_max_tokens: int = 3072
     cors_origins: list[str] = Field(default_factory=list)
 
     model_config = SettingsConfigDict(
