@@ -1416,6 +1416,55 @@ def test_package_processing_continues_when_vector_search_fails(
     assert timings["filtered_source_fragment_count"] == 0
     assert "Ollama embedding request failed" in timings["vector_search_error"]
 
+def test_impaired_driving_sanction_question_gets_known_kupap_130_context(
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    package = N8nIntakePackage(
+        id="package-kupap-130",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        status="queued",
+    )
+    db_session.add(package)
+    db_session.add(
+        N8nIntakeItem(
+            package_id="package-kupap-130",
+            item_type="text",
+            text="Олег Елець керував мотоблоком у стані алкогольного сп'яніння.",
+        )
+    )
+    db_session.commit()
+    fake_llm = FakeLegalAnalysisService()
+
+    response = N8nIntegrationService(
+        db_session,
+        legal_analysis_service=fake_llm,
+        vector_search_service=FailingVectorSearchService(),
+    ).start_package_processing(
+        request=N8nProcessPackageRequest(
+            package_id="package-kupap-130",
+            requested_agent="legal_research",
+            question="який передбачено штраф і позбавлення прав?",
+        )
+    )
+
+    assert response.status == "processed"
+    assert fake_llm.command is not None
+    assert fake_llm.command.source_fragments
+    fragment_text = fake_llm.command.source_fragments[0].text
+    assert fake_llm.command.source_fragments[0].document_id == "official-kupap-article-130-current"
+    assert "17 000 грн" in fragment_text
+    assert "1 рік" in fragment_text
+    assert "34 000 грн" in fragment_text
+    db_session.refresh(package)
+    timings = package.metadata_json["processing_timings"]
+    assert timings["known_legal_fragment_count"] == 1
+    assert "vector_search_error" in timings
+
 def test_contract_clause_drafting_mode_activates_for_numbered_clause_request(
     db_session: Session,
 ) -> None:

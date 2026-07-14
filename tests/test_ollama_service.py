@@ -167,6 +167,19 @@ def test_openai_fallback_can_be_primary_when_ollama_is_not_configured() -> None:
     assert service.openai_path == "/chat/completions"
 
 
+def test_legal_analysis_prompt_requires_direct_numeric_sanction_answer() -> None:
+    user_prompt = build_user_prompt(
+        LegalPackageAnalysisCommand(
+            question="який передбачено штраф і позбавлення прав?",
+            package_text="Особа керувала мотоблоком у стані алкогольного сп'яніння.",
+            lawyer_system_prompt="Працюй як юрист.",
+        )
+    )
+
+    assert "дай пряму відповідь у першому реченні" in user_prompt
+    assert "може варіюватися" in user_prompt
+    assert "коротку таблицю варіантів" in user_prompt
+
 def test_clause_drafting_prompt_uses_practical_contract_format() -> None:
     user_prompt = build_user_prompt(
         LegalPackageAnalysisCommand(
