@@ -1057,6 +1057,14 @@ class FakeVectorSearchService:
         ]
 
 
+class FailingVectorSearchService:
+    def __init__(self) -> None:
+        self.command: VectorSearchCommand | None = None
+
+    def search(self, command: VectorSearchCommand) -> list[VectorSearchResult]:
+        self.command = command
+        raise RuntimeError("Ollama embedding request failed: timed out")
+
 class IncompleteLegalAnalysisService(FakeLegalAnalysisService):
     def analyze_package(self, command: LegalPackageAnalysisCommand) -> LegalPackageAnalysisResult:
         self.command = command
@@ -1361,6 +1369,52 @@ def test_contract_followup_routes_search_to_document_facts_and_filters_sources(
         package.metadata_json["processing_timings"]["query_route"] == "contract_document_followup"
     )
 
+
+def test_package_processing_continues_when_vector_search_fails(
+    db_session: Session,
+) -> None:
+    _seed_workspace(db_session)
+    _seed_lawyer_profile(db_session)
+    package = N8nIntakePackage(
+        id="package-vector-fallback",
+        workspace_id="workspace-1",
+        user_id="user-1",
+        channel="telegram",
+        external_chat_id="100",
+        status="queued",
+    )
+    db_session.add(package)
+    db_session.add(
+        N8nIntakeItem(
+            package_id="package-vector-fallback",
+            item_type="document",
+            text="Договір між двома комерційними компаніями про надання послуг.",
+        )
+    )
+    db_session.commit()
+    fake_llm = FakeLegalAnalysisService()
+    failing_vector = FailingVectorSearchService()
+
+    response = N8nIntegrationService(
+        db_session,
+        legal_analysis_service=fake_llm,
+        vector_search_service=failing_vector,
+    ).start_package_processing(
+        request=N8nProcessPackageRequest(
+            package_id="package-vector-fallback",
+            requested_agent="contract_review",
+            question="Проаналізуй договір.",
+        )
+    )
+
+    assert response.status == "processed"
+    assert fake_llm.command is not None
+    assert fake_llm.command.source_fragments == []
+    db_session.refresh(package)
+    timings = package.metadata_json["processing_timings"]
+    assert timings["vector_result_count"] == 0
+    assert timings["filtered_source_fragment_count"] == 0
+    assert "Ollama embedding request failed" in timings["vector_search_error"]
 
 def test_contract_clause_drafting_mode_activates_for_numbered_clause_request(
     db_session: Session,

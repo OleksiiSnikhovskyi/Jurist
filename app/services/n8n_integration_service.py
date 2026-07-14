@@ -998,31 +998,40 @@ class N8nIntegrationService:
         )
         if query_text:
             vector_started_at = perf_counter()
-            results = self.vector_search_service.search(
-                VectorSearchCommand(
-                    workspace_id=workspace_id,
-                    user_id=user_id,
-                    query=query_text,
-                    limit=8 if query_route.startswith("contract_document") else 6,
+            try:
+                results = self.vector_search_service.search(
+                    VectorSearchCommand(
+                        workspace_id=workspace_id,
+                        user_id=user_id,
+                        query=query_text,
+                        limit=8 if query_route.startswith("contract_document") else 6,
+                    )
                 )
-            )
-            timings["vector_search_seconds"] = round(perf_counter() - vector_started_at, 3)
-            timings["vector_result_count"] = len(results)
-            source_fragments = [
-                SourceFragment(
-                    document_id=result.document_id,
-                    chunk_index=result.chunk_index,
-                    score=result.score,
-                    text=result.chunk_text[:900],
+            except Exception as exc:
+                # RAG search depends on the embedding provider. If Miledy/Ollama is unavailable,
+                # continue with the user's document text so answer-generation fallback can still work.
+                timings["vector_search_seconds"] = round(perf_counter() - vector_started_at, 3)
+                timings["vector_result_count"] = 0
+                timings["filtered_source_fragment_count"] = 0
+                timings["vector_search_error"] = str(exc)[:300]
+            else:
+                timings["vector_search_seconds"] = round(perf_counter() - vector_started_at, 3)
+                timings["vector_result_count"] = len(results)
+                source_fragments = [
+                    SourceFragment(
+                        document_id=result.document_id,
+                        chunk_index=result.chunk_index,
+                        score=result.score,
+                        text=result.chunk_text[:900],
+                    )
+                    for result in results
+                ]
+                source_fragments = self._filter_source_fragments_for_package(
+                    package_text=package_text,
+                    fragments=source_fragments,
+                    route=query_route,
                 )
-                for result in results
-            ]
-            source_fragments = self._filter_source_fragments_for_package(
-                package_text=package_text,
-                fragments=source_fragments,
-                route=query_route,
-            )
-            timings["filtered_source_fragment_count"] = len(source_fragments)
+                timings["filtered_source_fragment_count"] = len(source_fragments)
 
         llm_package_text = self._fit_package_text_for_llm(package_text)
         timings["llm_package_text_chars"] = len(llm_package_text)
